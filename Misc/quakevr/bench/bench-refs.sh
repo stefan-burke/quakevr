@@ -171,8 +171,8 @@ fi
 # run keeps its scratch for inspection: taken away here, worktrees and all
 for old in "$REPO"/scratch/bench-refs.*; do
 	[ -d "$old" ] || continue
-	git -C "$REPO" worktree remove --force "$old/baseline" >/dev/null 2>&1 || true
-	git -C "$REPO" worktree remove --force "$old/new" >/dev/null 2>&1 || true
+	git -C "$REPO" worktree remove --force --force "$old/baseline" >/dev/null 2>&1 || true
+	git -C "$REPO" worktree remove --force --force "$old/new" >/dev/null 2>&1 || true
 	rm -rf -- "$old"
 done
 WORK=$(mktemp -d "$REPO/scratch/bench-refs.XXXXXX" 2>/dev/null) || WORK=$(mktemp -d)
@@ -181,8 +181,8 @@ cleanup() {
 	if [ "$KEEP" -eq 1 ]; then
 		note "kept: $WORK for inspection (the worktrees stay registered until the next run takes them away)"
 	else
-		git -C "$REPO" worktree remove --force "$WORK/baseline" >/dev/null 2>&1 || true
-		git -C "$REPO" worktree remove --force "$WORK/new" >/dev/null 2>&1 || true
+		git -C "$REPO" worktree remove --force --force "$WORK/baseline" >/dev/null 2>&1 || true
+		git -C "$REPO" worktree remove --force --force "$WORK/new" >/dev/null 2>&1 || true
 		rm -rf -- "$WORK"
 	fi
 	exit "$status"
@@ -198,11 +198,13 @@ git -C "$REPO" worktree add --detach "$WORK/new" "$NEW_C" >/dev/null
 
 # The engine: CMake builds it (the Makefile's VR module links no Box3D, Steam Audio or mimalloc: vr.cmake has
 # the whole graph), both at once, Release and the mock backend alone (what the bench runs: neither side asks
-# for a system OpenXR), each exe beside its tracked ironwail.pak (the engine looks for it beside itself)
+# for a system OpenXR; mimalloc off, for its operator-override beside the module's own counting ones in
+# vr_alloccount.cpp links on Windows only), each exe beside its tracked ironwail.pak (found beside itself)
 note "building both (cmake, $JOBS jobs each; logs: $WORK/build-*.log)"
 build() {
 	local wt=$WORK/$1
-	cmake -S "$wt" -B "$wt/build" -DCMAKE_BUILD_TYPE=Release -DQVR_OPENXR=OFF >"$WORK/build-$1.log" 2>&1 &&
+	cmake -S "$wt" -B "$wt/build" -DCMAKE_BUILD_TYPE=Release -DQVR_OPENXR=OFF -DQVR_MIMALLOC=OFF \
+		-DENABLE_USERDIRS=OFF >"$WORK/build-$1.log" 2>&1 &&
 		cmake --build "$wt/build" --parallel "$JOBS" >>"$WORK/build-$1.log" 2>&1 &&
 		cp "$wt/build/ironwail" "$wt/Quake/ironwail"
 }
