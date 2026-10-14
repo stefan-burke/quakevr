@@ -26,7 +26,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "q_ctype.h"
 
 glprogs_t glprogs;
-static GLuint gl_programs[512]; // QVR (Linux): room for the world's feature variants (GL_WorldProgram)
+static GLuint gl_programs[1024]; // QVR (Linux): room for the world's and the models' feature variants (GL_WorldProgram, GL_AliasProgram)
 static GLuint gl_current_program;
 static int gl_num_programs;
 static int gl_shader_ab; // QVR: tests: QVR_SHADER_AB in every shader (vr_shader_reload)
@@ -452,6 +452,33 @@ GLuint GL_WorldProgram (int oit, int dither, int mode, int kind, unsigned featur
 
 /*
 =============
+GL_AliasProgram
+
+QVR (Linux): the model's program with only the features in `features` (QVR_AF_*, VR_AliasFeatures) compiled in, made
+the first time it is needed, as GL_WorldProgram does for the world: on the Steam Frame a model shader with every
+feature in it costs its registers and size wherever the features are off. The dynamic lights and their shadows come
+and go with the lights: the programs with and without them are made together.
+=============
+*/
+static GLuint alias_variants[2][3][2][3][QVR_AF_ALL + 1]; // [OIT][mode][alpha test][pose vertex type][features]
+
+GLuint GL_AliasProgram (int oit, int mode, int alphatest, int poseverttype, unsigned features)
+{
+	int pass;
+	features &= QVR_AF_ALL;
+	for (pass = 0; pass < 4; pass++)
+	{
+		unsigned f = (features & ~(QVR_AF_DLIGHTS | QVR_AF_SHADOWS)) | ((pass & 1) ? QVR_AF_DLIGHTS : 0) | ((pass & 2) ? QVR_AF_SHADOWS : 0);
+		GLuint *program = &alias_variants[oit][mode][alphatest][poseverttype][f];
+		if (!*program)
+			*program = GL_CreateProgram (alias_vertex_shader, alias_fragment_shader, "alias|OIT %d; MODE %d; ALPHATEST %d; POSEVERTTYPE %d; QVR_AF %u",
+				oit, mode, alphatest, poseverttype, f);
+	}
+	return alias_variants[oit][mode][alphatest][poseverttype][features];
+}
+
+/*
+=============
 GL_DeleteShaders
 =============
 */
@@ -470,6 +497,7 @@ void GL_DeleteShaders (void)
 
 	memset (&glprogs, 0, sizeof(glprogs));
 	memset (world_variants, 0, sizeof(world_variants)); // QVR (Linux)
+	memset (alias_variants, 0, sizeof(alias_variants)); // QVR (Linux)
 }
 
 /*

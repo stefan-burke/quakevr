@@ -2655,3 +2655,53 @@ extern "C" unsigned VR_WorldFeatures(void)
     }
     return f;
 }
+
+// QVR (Linux): the model shader's features this frame needs (glquake.h's QVR_AF_*), for GL_AliasProgram: each as the
+// shader's own branch tests it (the frame's data, the lights, the cvars the instances' values come from).
+// QVR_WORLD_UBER: all of them, to compare with the full shader.
+extern "C" unsigned VR_AliasFeatures(void)
+{
+    static const bool uber = getenv("QVR_WORLD_UBER") != nullptr;
+    if(uber)
+    {
+        return QVR_AF_ALL;
+    }
+    unsigned f = 0;
+    if(vr_retro.value != 0.f)
+    {
+        f |= QVR_AF_RETRO;
+    }
+    if(r_framedata.retrolight[5][2] > 0.f)
+    {
+        f |= QVR_AF_RETROLIGHT;
+    }
+    if(vr_parallax.value != 0.f && vr_normalmaps.value != 0.f)
+    {
+        f |= QVR_AF_PARALLAX;
+    }
+    if(vr_normalmaps.value != 0.f)
+    {
+        f |= QVR_AF_NORMALS;
+    }
+    if((r_framedata.shadowflags & 8) != 0 && r_framedata.numlights > 0)
+    {
+        f |= QVR_AF_DLIGHTS;
+        for(int i = 0; i < r_framedata.numlights; i++)
+        {
+            if(r_lightbuffer.lights[i].shadow[2] > 0.f)
+            {
+                f |= QVR_AF_SHADOWS;
+                break;
+            }
+        }
+    }
+    if(r_framedata.lighttweak[2] > 0.f)
+    {
+        f |= QVR_AF_SPECULAR;
+    }
+    if(vr_rim_light.value > 0.f || (vr_weapon_reflections.value > 0.f && vr_weapon_reflections_strength.value > 0.f))
+    {
+        f |= QVR_AF_RIM;
+    }
+    return f;
+}

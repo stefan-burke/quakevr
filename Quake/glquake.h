@@ -630,6 +630,17 @@ GLuint GL_WorldDecalRetroProgram (int oit, int dither, qboolean pdo); // QVR
 #define QVR_WF_DETAIL		32	// detail textures (vr_detail)
 #define QVR_WF_SHADOWS		64	// the dynamic and map lights' shadows, lights through a teleporter
 #define QVR_WF_ALL			127
+// QVR (Linux): the model shader's optional features (QVR_AF in alias_fragment_shader), for GL_AliasProgram
+#define QVR_AF_RETRO		1	// retro textures (vr_retro)
+#define QVR_AF_RETROLIGHT	2	// retro lighting (vr_retrolight)
+#define QVR_AF_PARALLAX		4	// parallax occlusion mapping (vr_parallax)
+#define QVR_AF_NORMALS		8	// normal maps (vr_normalmaps)
+#define QVR_AF_DLIGHTS		16	// dynamic lights per pixel (vr_dlight_models), when there are any
+#define QVR_AF_SHADOWS		32	// ... their shadows, when a light has one
+#define QVR_AF_SPECULAR		64	// the lights' sheen (vr_specular)
+#define QVR_AF_RIM			128	// rim light and reflections (vr_rim_light, vr_weapon_reflections)
+#define QVR_AF_ALL			255
+GLuint GL_AliasProgram (int oit, int mode, int alphatest, int poseverttype, unsigned features); // QVR (Linux)
 GLuint GL_WorldProgram (int oit, int dither, int mode, int kind, unsigned features); // QVR (Linux)
 void GL_ReloadShaders_f (void); // QVR: tests (vr_shader_reload)
 
