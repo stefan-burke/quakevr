@@ -2049,6 +2049,15 @@ extern "C" void VR_Shutdown()
     jobs::shutdown(); // last: whatever the systems above left queued run, the workers joined
 }
 
+// QVR (Linux): QVR_PACING=1: the game's update before the runtime's wait (host.c), while the GPU finishes the last
+// frame, whose xrEndFrame the OpenXR backend keeps until the next frame begins: SteamVR's xrEndFrame waits for the
+// GPU, so the CPU's and the GPU's work otherwise come one after the other.
+extern "C" int VR_PacingDeferred()
+{
+    static const int on = getenv("QVR_PACING") != nullptr && atoi(getenv("QVR_PACING")) != 0;
+    return on;
+}
+
 extern "C" void VR_BeginFrame()
 {
     if(!state || cls.state == ca_dedicated)

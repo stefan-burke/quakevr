@@ -53,6 +53,7 @@ void VR_Shutdown (void);	// client shutdown, before video shutdown
 void VR_StopDownloads (void);	// Host_Shutdown, before NET_Shutdown (curl_global_cleanup): the map index's and the
 								// map installer's threads cancelled and joined (vr_mapindex.cpp, vr_mapinstall.cpp)
 void VR_BeginFrame (void);	// once per host frame, after input events and before console commands
+int VR_PacingDeferred (void);	// QVR (Linux): QVR_PACING=1: VR_BeginFrame after the game's update, xrEndFrame when the next frame begins (host.c)
 int VR_IsActive (void);		// nonzero while vr_enabled is set and a backend session is running: the
 							// runtime paces frames (no frame cap, no sleeping when unfocused)
 int VR_Unpaced (void);		// nonzero while the mock headset runs frames unpaced (vr_mock_fast, the game's clock

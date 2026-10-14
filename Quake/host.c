@@ -1467,7 +1467,8 @@ void _Host_Frame (double time)
 // allow mice or other external controllers to add commands
 	IN_Commands ();
 	VR_ProfileEnd (); // QVR
-	VR_BeginFrame (); // QVR
+	if (!VR_PacingDeferred ()) // QVR (Linux): else after the game's update (below)
+		VR_BeginFrame (); // QVR
 	if (host_framecount == 0) VR_TimeMark ("first frame: input, VR backend start"); // QVR
 
 //check the stdin for commands (dedicated servers)
@@ -1558,6 +1559,12 @@ void _Host_Frame (double time)
 	if (cls.state == ca_connected)
 		CL_ReadFromServer ();
 	VR_ProfileEnd (); // QVR
+
+	// QVR (Linux): the runtime's frame waited for and begun only now (VR_PacingDeferred): the update above ran while
+	// the GPU finished the last frame, whose xrEndFrame (SteamVR's waits for the GPU) the backend kept until here.
+	// The update used the last frame's poses; the frame is drawn with this one's.
+	if (VR_PacingDeferred ())
+		VR_BeginFrame ();
 
 // update video
 	if (host_speeds.value)

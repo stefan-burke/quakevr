@@ -258,6 +258,7 @@ public:
         {
             endFrame(false);
         }
+        flushEnd(); // QVR (Linux)
 
         for(Swapchain* sc : {&swapchains[0], &swapchains[1], &panel})
         {
@@ -334,6 +335,7 @@ public:
         {
             endFrame(false); // the previous frame was not rendered (e.g. while loading)
         }
+        flushEnd(); // QVR (Linux): the last frame's xrEndFrame, kept while the game updated (VR_PacingDeferred)
 
         double t0 = Sys_DoubleTime();
         const bool polled = pollEvents();
@@ -582,10 +584,46 @@ public:
 
         endInfo.layerCount = count;
         endInfo.layers = count ? submitted : nullptr;
+        if(VR_PacingDeferred())
+        {
+            // QVR (Linux): xrEndFrame when the next frame begins (flushEnd), as OpenCE's Halo does: SteamVR's waits
+            // for the GPU, which goes on with this frame's work meanwhile while the game updates the next (host.c).
+            // The layers are kept as they are now (the next frame changes the panel's state).
+            deferred.projViews[0] = projViews[0];
+            deferred.projViews[1] = projViews[1];
+            deferred.layer = layer;
+            deferred.layer.views = deferred.projViews;
+            deferred.quad = quad;
+            deferred.count = 0;
+            for(uint32_t i = 0; i < count; i++)
+            {
+                deferred.submitted[deferred.count++] = submitted[i] == reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer)
+                    ? reinterpret_cast<const XrCompositionLayerBaseHeader*>(&deferred.layer)
+                    : reinterpret_cast<const XrCompositionLayerBaseHeader*>(&deferred.quad);
+            }
+            deferred.info = endInfo;
+            deferred.info.layers = deferred.count ? deferred.submitted : nullptr;
+            deferred.pending = true;
+            timing.frames++;
+            return;
+        }
         const double t0 = Sys_DoubleTime();
         check(xrEndFrame(session, &endInfo), "xrEndFrame");
         timeCall(CallEnd, t0);
         timing.frames++;
+    }
+
+    // QVR (Linux): the frame endFrame kept (VR_PacingDeferred) ended now: before the next xrBeginFrame, or the stop.
+    void flushEnd()
+    {
+        if(!deferred.pending)
+        {
+            return;
+        }
+        deferred.pending = false;
+        const double t0 = Sys_DoubleTime();
+        check(xrEndFrame(session, &deferred.info), "xrEndFrame");
+        timeCall(CallEnd, t0);
     }
 
     [[nodiscard]] unsigned acquirePanelImage(int width, int height) override
@@ -693,6 +731,16 @@ private:
     bool sessionRunning{false};
     bool swapIntervalChanged{false};
     bool frameBegun{false};
+    struct
+    {
+        bool pending{false};
+        XrCompositionLayerProjectionView projViews[2]{};
+        XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+        XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+        const XrCompositionLayerBaseHeader* submitted[2]{};
+        uint32_t count{0};
+        XrFrameEndInfo info{XR_TYPE_FRAME_END_INFO};
+    } deferred; // QVR (Linux): the frame endFrame kept for flushEnd
     XrFrameState frameState{XR_TYPE_FRAME_STATE};
     XrView views[2]{{XR_TYPE_VIEW}, {XR_TYPE_VIEW}};
     XrViewConfigurationView configViews[2]{{XR_TYPE_VIEW_CONFIGURATION_VIEW}, {XR_TYPE_VIEW_CONFIGURATION_VIEW}};
