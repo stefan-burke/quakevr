@@ -26,7 +26,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "q_ctype.h"
 
 glprogs_t glprogs;
-static GLuint gl_programs[512]; // QVR: room for the world's programs by feature (GL_WorldProgram)
+static GLuint gl_programs[1024]; // QVR: room for the world's and the models' programs by feature (GL_WorldProgram, GL_AliasProgram)
 static GLuint gl_current_program;
 static int gl_num_programs;
 static int gl_shader_ab; // QVR: tests: QVR_SHADER_AB in every shader (vr_shader_reload)
@@ -365,13 +365,8 @@ void GL_CreateShaders (void)
 	glprogs.world_depth = GL_CreateProgram (world_vertex_shader, NULL, "world depth|OIT 0; DITHER 0; MODE %d", WORLDSHADER_SOLID); // QVR
 	glprogs.world_depth_pdo = GL_CreateProgram (world_vertex_shader, world_depth_fragment_shader, "world depth pdo|OIT 0; DITHER 0; MODE %d; PDO 1", WORLDSHADER_SOLID); // QVR: pixel depth offset (vr_parallax_depth_write)
 
+	// QVR: the models' programs are made when first needed (GL_AliasProgram)
 	int poseverttype;
-	for (oit = 0; oit < 2; oit++)
-		for (mode = 0; mode < 3; mode++)
-			for (alphatest = 0; alphatest < 2; alphatest++)
-				for (poseverttype = 0; poseverttype < 3; poseverttype++) 
-					glprogs.alias[oit][mode][alphatest][poseverttype] =
-					GL_CreateProgram (alias_vertex_shader, alias_fragment_shader, "alias|OIT %d; MODE %d; ALPHATEST %d; POSEVERTTYPE %d", oit, mode, alphatest, poseverttype);
 	for (poseverttype = 0; poseverttype < 3; poseverttype++) // QVR; MODE 0 (standard) in these: an undefined name in #if is an error in GLSL (strict drivers)
 		glprogs.alias_depth[poseverttype] = GL_CreateProgram (alias_vertex_shader, NULL, "alias depth|MODE 0; POSEVERTTYPE %d", poseverttype);
 	for (poseverttype = 0; poseverttype < 3; poseverttype++) // QVR: into all their faces at once (vr/vr_lighting.cpp)
@@ -427,6 +422,33 @@ GLuint GL_WorldProgram (int oit, int dither, int mode, int flags, unsigned featu
 
 /*
 =============
+GL_AliasProgram
+
+QVR: the models' program with only `features` (QVR_AF_*, VR_AliasFeatures) compiled in, made the first time it is
+needed, as GL_WorldProgram does for the world.
+=============
+*/
+static GLuint alias_programs[2][3][2][3][QVR_AF_ALL + 1]; // [OIT][mode][alpha test][poseverttype][features]
+
+GLuint GL_AliasProgram (int oit, int mode, int alphatest, int poseverttype, unsigned features)
+{
+	int pass;
+	features &= QVR_AF_ALL;
+	// The dynamic lights and their shadows come and go with the lights: the programs with and without each are made
+	// together
+	for (pass = 0; pass < 4; pass++)
+	{
+		unsigned f = (features & ~(QVR_AF_DLIGHTS | QVR_AF_SHADOWS)) | ((pass & 1) ? QVR_AF_DLIGHTS : 0) | ((pass & 2) ? QVR_AF_SHADOWS : 0);
+		GLuint *program = &alias_programs[oit][mode][alphatest][poseverttype][f];
+		if (!*program)
+			*program = GL_CreateProgram (alias_vertex_shader, alias_fragment_shader, "alias|OIT %d; MODE %d; ALPHATEST %d; POSEVERTTYPE %d; QVR_AF %u",
+				oit, mode, alphatest, poseverttype, f);
+	}
+	return alias_programs[oit][mode][alphatest][poseverttype][features];
+}
+
+/*
+=============
 GL_DeleteShaders
 =============
 */
@@ -445,6 +467,7 @@ void GL_DeleteShaders (void)
 
 	memset (&glprogs, 0, sizeof(glprogs));
 	memset (world_programs, 0, sizeof(world_programs)); // QVR
+	memset (alias_programs, 0, sizeof(alias_programs)); // QVR
 }
 
 /*

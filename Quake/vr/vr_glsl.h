@@ -2018,7 +2018,7 @@ SPECULAR_AA_FUNCTIONS
 "vec3 ModelDynamicLights(vec3 n, vec3 bumped, out vec3 spec)\n" \
 "{\n" \
 "	spec = vec3(0.);\n" \
-"	if ((ShadowFlags & 8u) == 0u || NumLights == 0u)\n" \
+"	if (!AF_ON(QVR_AF_DLIGHTS) || (ShadowFlags & 8u) == 0u || NumLights == 0u)\n" \
 "		return vec3(0.);\n" \
 "	ivec3 cluster_coord;\n" \
 "	cluster_coord.x = int(floor(in_coord.x));\n" \
@@ -2027,8 +2027,8 @@ SPECULAR_AA_FUNCTIONS
 "	uvec2 clusterdata = imageLoad(LightClusters, cluster_coord).xy;\n" \
 "	if ((clusterdata.x | clusterdata.y) == 0u)\n" \
 "		return vec3(0.);\n" \
-"	vec3 pos = RetroLightAt(in_pos + EyePos, RetroLight[5].y); /* QVR: or its retro lighting block's (vr_retrolight.h) */\n" \
-"	vec3 spos = RetroShadowAt(in_pos + EyePos, pos); /* ... where the shadows are looked up */\n" \
+"	vec3 pos = AF_ON(QVR_AF_RETROLIGHT) ? RetroLightAt(in_pos + EyePos, RetroLight[5].y) : in_pos + EyePos; /* QVR: or its retro lighting block's (vr_retrolight.h) */\n" \
+"	vec3 spos = AF_ON(QVR_AF_RETROLIGHT) ? RetroShadowAt(in_pos + EyePos, pos) : pos; /* ... where the shadows are looked up */\n" \
 "	bool darkplaces = (ShadowFlags & 16u) != 0u;\n" \
 "	float unit = (ShadowFlags & 32u) != 0u ? 1.0 / 128.0 : Fog.w < 0. ? 2.0 / 200.0 : 1.0 / 200.0; // the sign of Fog.w: overbright models\n" \
 "	float angleScale = darkplaces ? 1.0 : 2.0; // LightAngle doubles the lit part (over its ambient 0.3)\n" \
@@ -2054,14 +2054,14 @@ SPECULAR_AA_FUNCTIONS
 "			float d = d2 * inv;\n" \
 "			vec3 dir = tl * inv;\n" \
 "			float lit = (darkplaces ? DarkPlacesAtten(d, l.radius) : (l.radius - d) * unit) * (1.0 - smoothstep(0.0, 1.0, l.spot.w + dot(l.spot.xyz, dir))); // SpotCone\n" \
-"			if (lit > 0. && l.shadow.z > 0.)\n" \
+"			if (AF_ON(QVR_AF_SHADOWS) && lit > 0. && l.shadow.z > 0.)\n" \
 "				lit *= mix(RetroShadowQuant(l.shadow2.x > 0. ? SpotShadow(l, spos, n) : ShadowLookup(ShadowAtlas, l.shadow.xyz, ShadowOffset(spos - l.origin, n, l.shadow.z))), 1.0, l.shadow2.y);\n" \
 "			if (lit <= 0.)\n" \
 "				continue;\n" \
 "			float ndl = dot(bumped, dir);\n" \
 "			float ambient = darkplaces ? l.minlight : 0.3;\n" \
 "			total += lit * mix(1.0, ambient + (1.0 - ambient) * angleScale * max(ndl, 0.0), DlightAngle) * l.color;\n" \
-"			if (LightTweak.z > 0. && ndl > 0.)\n" \
+"			if (AF_ON(QVR_AF_SPECULAR) && LightTweak.z > 0. && ndl > 0.)\n" \
 "				spec += lit * (pow(max(dot(bumped, normalize(dir + toEye)), 0.0), SpecLobe.x) * SpecLobe.y * LightTweak.z) * l.color;\n" \
 "		}\n" \
 "	}\n" \
@@ -2130,7 +2130,7 @@ SPECULAR_AA_FUNCTIONS
 "#if ALPHATEST\n" \
 "	lit = 1.0;\n" \
 "#endif\n" \
-"	if ((s.x <= 0. && s.y <= 0.) || lit <= 0.)\n" \
+"	if (!AF_ON(QVR_AF_RIM) || (s.x <= 0. && s.y <= 0.) || lit <= 0.)\n" \
 "		return add;\n" \
 "	vec3 v = normalize(-in_pos);\n" \
 "	if (s.x > 0.)\n" \
@@ -2354,7 +2354,7 @@ SPECULAR_AA_FUNCTIONS
 #define QVR_ALIAS_FS_PARALLAX \
 "	// QVR: parallax occlusion mapping (vr_parallax_models) on the skin's heights, in the triangle's own frame, with\n" \
 "	// fewer steps than the world's; read with the surface's mip level (the moved coordinates jump at occlusions)\n" \
-"	if (in_pdepth != 0.) // < 0: an authored map's heights (real steep relief: all the world's steps)\n" \
+"	if (AF_ON(QVR_AF_PARALLAX) && in_pdepth != 0.) // < 0: an authored map's heights (real steep relief: all the world's steps)\n" \
 "	{\n" \
 "		vec3 n = normalize(cross(dpdx, dpdy));\n" \
 "		n = dot(n, in_pos) > 0. ? -n : n; // facing the eye (in_pos is from it)\n" \
@@ -2378,7 +2378,7 @@ SPECULAR_AA_FUNCTIONS
 "	// QVR: the normal bent by the skin's normal map (vr_normalmaps), for the model's own light and the dynamic lights\n" \
 "	vec3 n = normalize(in_nor);\n" \
 "	float bumpk = instances[in_instance].AO.z; // QVR: its normal map's strength: a made one's LightTweak.w, an authored one's own (vr_normalmap_authored)\n" \
-"	vec3 bumped = bumpk > 0. && (in_bumplight.w > 0. || NumLights > 0u || instances[in_instance].Ambient[0].w > 0.) ? BumpedNormalK(NormalTex, uv, duvdx, duvdy, dpdx, dpdy, n, bumpk) : n;\n" \
+"	vec3 bumped = AF_ON(QVR_AF_NORMALS) && bumpk > 0. && (in_bumplight.w > 0. || NumLights > 0u || instances[in_instance].Ambient[0].w > 0.) ? BumpedNormalK(NormalTex, uv, duvdx, duvdy, dpdx, dpdy, n, bumpk) : n;\n" \
 "	if (wounds.flatten > 0.) // QVR: blood and water fill the bumps\n" \
 "		bumped = normalize(mix(bumped, n, wounds.flatten));\n" \
 "	if (wounds.slope != vec2(0.)) // QVR: your own wounds' relief (the fine masks): char crusted, blood sunk in\n" \
@@ -2398,7 +2398,7 @@ SPECULAR_AA_FUNCTIONS
 "	float occlusion = vao * DynamicAO(in_pos + EyePos, AONormal(n, in_bumplight.xyz), instances[in_instance].AO.x, in_coord, in_depth);\n" \
 "	vec3 own_light = in_color.rgb * ModelBumpShade(n, bumped) * ModelAmbient(n, bumped) * occlusion; // QVR\n" \
 "	vec3 dyn_light = ModelDynamicLights(n, bumped, spec) * sqrt(vao); // QVR\n" \
-"	if (RetroLight[5].z > 0.) // QVR: retro lighting's levels (vr_retrolight.h; no derivatives after the discard)\n" \
+"	if (AF_ON(QVR_AF_RETROLIGHT) && RetroLight[5].z > 0.) // QVR: retro lighting's levels (vr_retrolight.h; no derivatives after the discard)\n" \
 "	{\n" \
 "#if ALPHATEST\n" \
 "		RetroLightModel(own_light, dyn_light, false);\n" \

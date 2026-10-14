@@ -1479,6 +1479,7 @@ QVR_BOX_WOUND_PAINT_VS // QVR: a held brush model's blood: its box drawn into it
 ////////////////////////////////////////////////////////////////
 
 static const char alias_fragment_shader[] =
+QVR_AF_GLSL // QVR: the features this program has (QVR_AF, GL_AliasProgram); the others compiled out
 ALIAS_INSTANCE_BUFFER
 QVR_ALIAS_FS_HEADER // QVR: the frame data, lights and functions the alias fragment shader uses
 NOISE_FUNCTIONS
@@ -1505,7 +1506,7 @@ QVR_BEHIND_SHOWN_GATE_ALIAS // QVR: see-through models behind a teleporter shown
 "	vec2 uv = in_texcoord;\n"
 "	vec3 dpdx = dFdx(in_pos), dpdy = dFdy(in_pos); // QVR: for the normal map (before any discard)\n"
 "	vec2 duvdx = dFdx(uv), duvdy = dFdy(uv);\n"
-"	if (RetroLight[5].z > 0.) // QVR: retro lighting (vr_retrolight.h): the skin's grid, in its Quake texels (Retro.w: their share of the texture's)\n"
+"	if (AF_ON(QVR_AF_RETROLIGHT) && RetroLight[5].z > 0.) // QVR: retro lighting (vr_retrolight.h): the skin's grid, in its Quake texels (Retro.w: their share of the texture's)\n"
 "	{\n"
 "		vec4 rl_r = instances[in_instance].Retro;\n"
 "		vec2 rl_size = vec2(textureSize(Tex, 0)) * (rl_r.w > 0.0 ? rl_r.w : 1.0);\n"
@@ -1519,7 +1520,9 @@ QVR_BEHIND_SHOWN_GATE_ALIAS // QVR: see-through models behind a teleporter shown
 "#else\n"
 QVR_ALIAS_FS_PARALLAX // QVR: parallax occlusion mapping on the skin's heights
 "	vec4 retro = instances[in_instance].Retro; // QVR: retro textures (vr_retro.h)\n"
+"#if (QVR_AF & QVR_AF_RETRO) != 0\n"
 "	RetroBegin(in_retroset, retro.y > 0.0 ? retro.yz : vec2(textureSize(Tex, 0)), duvdx, duvdy, dpdx, dpdy, normalize(cross(dpdx, dpdy)));\n"
+"#endif\n"
 "	vec4 result = Retro > 0 ? RetroSample(Tex, uv, duvdx, duvdy, true) : textureGrad(Tex, uv, duvdx, duvdy);\n"
 "#endif\n"
 "#if ALPHATEST\n"

@@ -592,7 +592,6 @@ typedef struct glprogs_s {
 	GLuint		skylayers[2];		// [dither]
 	GLuint		skycubemap[2][2];	// [anim][dither]
 	GLuint		skyboxside[2];		// [dither]
-	GLuint		alias[2][3][2][3];	// [OIT][mode:standard/dithered/noperspective][alpha test][poseverttype]
 	GLuint		alias_depth[3];		// QVR: [poseverttype] the shadow maps' casters: depth only (no fragment shader)
 	GLuint		alias_depth_layered[3];	// QVR: [poseverttype] the same, drawn into all their faces at once (gl_viewport_layer_able; 0 without)
 	GLuint		woundpaint[3];		// QVR: [poseverttype] a model drawn into its wound mask (vr/vr_wounds.cpp)
@@ -638,6 +637,28 @@ void GL_DeleteShaders (void);
 #define WORLDPROG_PDO			1	// GL_WorldProgram's flags: writing the parallax hits' depth
 #define WORLDPROG_DECAL_RETRO	2	// ... with the decals' retro textures' code
 GLuint GL_WorldProgram (int oit, int dither, int mode, int flags, unsigned features); // QVR
+// QVR: the model shader's optional features (QVR_AF in alias_fragment_shader), for GL_AliasProgram
+#define QVR_AF_RETRO		1	// retro textures (vr_retro)
+#define QVR_AF_RETROLIGHT	2	// retro lighting (vr_retrolight)
+#define QVR_AF_PARALLAX		4	// parallax occlusion mapping (vr_parallax)
+#define QVR_AF_NORMALS		8	// normal maps (vr_normalmaps)
+#define QVR_AF_DLIGHTS		16	// dynamic lights per pixel (vr_dlight_models), when there are any
+#define QVR_AF_SHADOWS		32	// ... their shadows, when a light has one
+#define QVR_AF_SPECULAR		64	// the lights' sheen (vr_specular)
+#define QVR_AF_RIM			128	// rim light and reflections (vr_rim_light, vr_weapon_reflections)
+#define QVR_AF_ALL			255
+// ... as the shader names them
+#define QVR_AF_GLSL \
+	"#define QVR_AF_RETRO "		QS_STRINGIFY (QVR_AF_RETRO) "\n" \
+	"#define QVR_AF_RETROLIGHT "	QS_STRINGIFY (QVR_AF_RETROLIGHT) "\n" \
+	"#define QVR_AF_PARALLAX "	QS_STRINGIFY (QVR_AF_PARALLAX) "\n" \
+	"#define QVR_AF_NORMALS "	QS_STRINGIFY (QVR_AF_NORMALS) "\n" \
+	"#define QVR_AF_DLIGHTS "	QS_STRINGIFY (QVR_AF_DLIGHTS) "\n" \
+	"#define QVR_AF_SHADOWS "	QS_STRINGIFY (QVR_AF_SHADOWS) "\n" \
+	"#define QVR_AF_SPECULAR "	QS_STRINGIFY (QVR_AF_SPECULAR) "\n" \
+	"#define QVR_AF_RIM "		QS_STRINGIFY (QVR_AF_RIM) "\n" \
+	"#define AF_ON(f) ((QVR_AF & (f)) != 0)\n"
+GLuint GL_AliasProgram (int oit, int mode, int alphatest, int poseverttype, unsigned features); // QVR
 void GL_ReloadShaders_f (void); // QVR: tests (vr_shader_reload)
 
 typedef struct glframebufs_s {

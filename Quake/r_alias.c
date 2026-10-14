@@ -539,7 +539,7 @@ void R_FlushAliasInstances (qboolean showtris)
 		mode = r_softemu_mdl_warp.value > 0.f ? ALIASSHADER_NOPERSP : ALIASSHADER_STANDARD;
 		break;
 	}
-	GL_UseProgram (glprogs.alias[oit][mode][alphatest][poseverttype]);
+	GL_UseProgram (GL_AliasProgram (oit, mode, alphatest, poseverttype, VR_AliasFeatures ())); // QVR: this frame's features
 	if (aliasdepth && !alphatest && !translucent) // QVR: a shadow map's opaque casters: no fragment shader (holey skins keep theirs)
 		GL_UseProgram (layered ? glprogs.alias_depth_layered[poseverttype] : glprogs.alias_depth[poseverttype]);
 	if (layered) // QVR: the faces' view-projections and the draws (holey skins are drawn a face at a time: vr_lighting.cpp)
