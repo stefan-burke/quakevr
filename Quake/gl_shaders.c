@@ -406,6 +406,15 @@ GLuint GL_WorldProgram (int oit, int dither, int mode, int flags, unsigned featu
 {
 	int pass;
 	features &= QVR_WF_ALL;
+	// The features this mode's program cannot read, their code compiled out by MODE or DITHER (the parallax and
+	// the decals are the solid world's own; a liquid's bumps are its waves, no normal maps; detail is out wherever
+	// the lightmap is dithered): the bit would only ask for another program nothing differed in
+	if (mode != WORLDSHADER_SOLID)
+		features &= ~(QVR_WF_PARALLAX | QVR_WF_DECALS);
+	if (mode == WORLDSHADER_WATER)
+		features &= ~(QVR_WF_NORMALS | QVR_WF_DETAIL);
+	if (dither != 0)
+		features &= ~QVR_WF_DETAIL;
 	// The shadows come and go with the lights (a shot's flash): the programs with them and without are made together,
 	// so that a fight doesn't stop to compile one
 	for (pass = 0; pass < 2; pass++)
@@ -434,9 +443,13 @@ GLuint GL_AliasProgram (int oit, int mode, int alphatest, int poseverttype, unsi
 {
 	int pass;
 	features &= QVR_AF_ALL;
+	// The shadows are read only inside the dynamic lights' code (ModelDynamicLights returns at once without
+	// them), and VR_AliasFeatures never asks for them without the lights: no program is made for that combination
+	if (!(features & QVR_AF_DLIGHTS))
+		features &= ~QVR_AF_SHADOWS;
 	// The dynamic lights and their shadows come and go with the lights: the programs with and without each are made
 	// together
-	for (pass = 0; pass < 4; pass++)
+	for (pass = 0; pass < 3; pass++)
 	{
 		unsigned f = (features & ~(QVR_AF_DLIGHTS | QVR_AF_SHADOWS)) | ((pass & 1) ? QVR_AF_DLIGHTS : 0) | ((pass & 2) ? QVR_AF_SHADOWS : 0);
 		GLuint *program = &alias_programs[oit][mode][alphatest][poseverttype][f];
