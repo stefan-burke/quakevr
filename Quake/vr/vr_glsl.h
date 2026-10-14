@@ -709,7 +709,7 @@ QVR_ZFIX_FUNCTION \
 "\n"\
 
 // pixel depth offset (vr_parallax_depth_write, Parallax2.w): in the programs made with PDO 1 (the opaque world's
-// glprogs.world_pdo and its pre-pass glprogs.world_depth_pdo, used only while it is on: a shader that writes
+// GL_WorldProgram's WORLDPROG_PDO ones and its pre-pass glprogs.world_depth_pdo, used only while it is on: a shader that writes
 // gl_FragDepth writes it for every pixel, and under foveated rendering's coarse shading one value for each block of
 // pixels, so the others keep the fixed-function depth), QVR_PDO is 1 and the shader writes gl_FragDepth on every
 // path: the surface's own (gl_FragCoord.z), or a parallax hit's, which is always further (ParallaxFragDepth).
@@ -1450,7 +1450,7 @@ LIQUID_SWELL \
 #define QVR_WORLD_FS_DECALS \
 "#if MODE == " QS_STRINGIFY (WORLDSHADER_SOLID) "\n" \
 "	vec3 decal_mod = vec3(1.0);\n" \
-"	if (DecalClock.z > 0.0 && in_retro.w > 0.5)\n" \
+"	if (WF_ON(QVR_WF_DECALS) && DecalClock.z > 0.0 && in_retro.w > 0.5)\n" \
 "	{\n" \
 "		vec3 decal_pos = parallax ? in_pos + ParallaxShiftWorld(puv - uv, duvdx, duvdy, dpdx, dpdy) : in_pos;\n" \
 "		decal_mod = DecalsAt(decal_pos, in_pos, facing, dpdx, dpdy);\n" \
@@ -1546,7 +1546,7 @@ QVR_DECAL_FUNCTIONS \
 "#if MODE == " QS_STRINGIFY (WORLDSHADER_SOLID) "\n" \
 "	detail_on = detail_on && result.a > 0.; // not on fullbright texels (alpha 0)\n" \
 "#endif\n" \
-"	if (detail_on) // (the mixes below, by 0..1, give a factor of 1 where they are by 0: the reads skipped there)\n" \
+"	if (WF_ON(QVR_WF_DETAIL) && detail_on) // (the mixes below, by 0..1, give a factor of 1 where they are by 0: the reads skipped there)\n" \
 "	{\n" \
 "		float detail = DetailFactor(in_detail, puv, duvdx, duvdy, distance(in_pos, EyePos));\n" \
 "		if (Retro > 0) // QVR: retro textures keep as much of the grain as their set says (vr_retro.h)\n" \
@@ -1570,7 +1570,7 @@ QVR_DECAL_FUNCTIONS \
 "	vec3 bumped = facing;\n" \
 "	vec3 luxdir = vec3(0.); // QVR: the baked light's real direction (deluxemaps), for its bumps and sheen; 0: none\n" \
 "#if MODE != " QS_STRINGIFY (WORLDSHADER_WATER) "\n" \
-"	if (LightTweak.w > 0.)\n" \
+"	if (WF_ON(QVR_WF_NORMALS) && LightTweak.w > 0.)\n" \
 "	{\n" \
 "		bumped = BumpedNormal(NormalTex, puv, duvdx, duvdy, dpdx, dpdy, facing);\n" \
 "		if (LightTweak.y > 0.)\n" \
@@ -1604,7 +1604,7 @@ QVR_DECAL_FUNCTIONS \
 "	SpecularAA(Parallax.w > 0. ? NormalSpread(bumped) : 0.0); // QVR: the sheen's lobe widened by the bumps under the pixel (vr_specular_aa)\n" \
 "#endif\n" \
 "#if MODE != " QS_STRINGIFY (WORLDSHADER_WATER) "\n" \
-"	if ((in_flags & CF_SPECMAP) != 0u) // QVR: an external pack's specular map (vr/vr_extmaps.cpp): the sheen's colour and\n" \
+"	if (WF_ON(QVR_WF_NORMALS) && (in_flags & CF_SPECMAP) != 0u) // QVR: an external pack's specular map (vr/vr_extmaps.cpp): the sheen's colour and\n" \
 "	{ // brightness per texel, its lobe narrowed by the .mat's hardness (as bright on the whole)\n" \
 "		specular_map = RetroAux(SpecTex, puv, duvdx, duvdy).rgb * in_extmat.y; // (the retro textures' blocks: vr_retro.h)\n" \
 "		float hard = SpecLobe.x * in_extmat.z;\n" \
@@ -1614,7 +1614,7 @@ QVR_DECAL_FUNCTIONS \
 "	// QVR: the baked light's sheen, from its real direction (deluxemaps), as the dynamic lights' (vr_specular, the lobe\n" \
 "	// SpecularAA sets) at a quarter of their strength: a lamp's glint on the bumps near it (at half, rough walls by\n" \
 "	// a lamp looked hazy, 7 to 12% brighter)\n" \
-"	if (luxdir != vec3(0.) && LightTweak.z > 0. && dot(bumped, luxdir) > 0.)\n" \
+"	if (WF_ON(QVR_WF_NORMALS) && luxdir != vec3(0.) && LightTweak.z > 0. && dot(bumped, luxdir) > 0.)\n" \
 "	{\n" \
 "		vec3 h = normalize(luxdir + normalize(EyePos - in_pos));\n" \
 "		specular_light += total_light * (0.5 * LightTweak.z * SpecLobe.y) * pow(max(dot(bumped, h), 0.0), SpecLobe.x);\n" \
@@ -1624,7 +1624,7 @@ QVR_DECAL_FUNCTIONS \
 // a light's shadow and spot cone (rl_pos, rl_spos, rl_mpos: in_pos, or retro lighting's blocks: vr_retrolight.h;
 // rl_spos_same: rl_spos is rl_pos; to_eye: the unit direction from rl_pos to the eye)
 #define QVR_WORLD_FS_LIGHT_SHADOW \
-"					if (l.shadow.w != 0.) // QVR: a map light's shadow of moving things\n" \
+"					if (WF_ON(QVR_WF_SHADOWS) && l.shadow.w != 0.) // QVR: a map light's shadow of moving things\n" \
 "					{\n" \
 "						total_light *= MapLightShadow(l, rl_mpos, facing, total_light);\n" \
 "						continue;\n" \

@@ -26,7 +26,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "q_ctype.h"
 
 glprogs_t glprogs;
-static GLuint gl_programs[128];
+static GLuint gl_programs[512]; // QVR: room for the world's programs by feature (GL_WorldProgram)
 static GLuint gl_current_program;
 static int gl_num_programs;
 static int gl_shader_ab; // QVR: tests: QVR_SHADER_AB in every shader (vr_shader_reload)
@@ -346,13 +346,7 @@ void GL_CreateShaders (void)
 	for (mode = 0; mode < 2; mode++)
 		glprogs.oit_resolve[mode] = GL_CreateProgram (oit_resove_vertex_shader, oit_resove_fragment_shader, "oit resolve|MSAA %d", mode);
 
-	for (oit = 0; oit < 2; oit++)
-		for (dither = 0; dither < 3; dither++)
-			for (mode = 0; mode < 3; mode++)
-				glprogs.world[oit][dither][mode] = GL_CreateProgram (world_vertex_shader, world_fragment_shader, "world|OIT %d; DITHER %d; MODE %d%s", oit, dither, mode,
-					mode == WORLDSHADER_SOLID ? "; NO_DECAL_RETRO 1" : ""); // QVR: the decals' retro textures' code: GL_WorldDecalRetroProgram's
-	for (dither = 0; dither < 3; dither++) // QVR: the opaque world writing its parallax hits' depth (vr_parallax_depth_write)
-		glprogs.world_pdo[dither] = GL_CreateProgram (world_vertex_shader, world_fragment_shader, "world pdo|OIT 0; DITHER %d; MODE %d; PDO 1; NO_DECAL_RETRO 1", dither, WORLDSHADER_SOLID);
+	// QVR: the world's programs are made when first needed (GL_WorldProgram)
 
 	for (dither = 0; dither < 2; dither++)
 	{
@@ -400,24 +394,35 @@ void GL_CreateShaders (void)
 
 /*
 =============
-GL_WorldDecalRetroProgram
+GL_WorldProgram
 
-QVR: the solid world's program with the decals' retro textures' code (vr_retro: the decals have a retro set), made the
-first time it is needed. The others go without it (NO_DECAL_RETRO): its mere presence slowed the decals' loop by a
-quarter (PERF_DECISIONS.md 15), and making these at the start would add to every start's shaders.
+QVR: the world's program with only `features` (QVR_WF_*, VR_WorldFeatures) compiled in, made the first time it is
+needed. The world shader branches on uniforms for its optional features, and a GPU pays for the untaken code all the
+same (its registers, its size): on the Steam Frame (Adreno 750 through Zink) the whole shader is about 9,700
+instructions at 32 registers a thread, and the world's GPU time halves without the features that are off.
+flags: WORLDPROG_PDO, the opaque world writing its parallax hits' depth (vr_parallax_depth_write);
+WORLDPROG_DECAL_RETRO, the decals' retro textures' code (vr_retro: the decals have a retro set), which the others go
+without (NO_DECAL_RETRO): its mere presence slowed the decals' loop by a quarter (PERF_DECISIONS.md 15).
 =============
 */
-GLuint GL_WorldDecalRetroProgram (int oit, int dither, qboolean pdo)
+static GLuint world_programs[2][3][3][4][QVR_WF_ALL + 1]; // [OIT][dither][mode][flags][features]
+
+GLuint GL_WorldProgram (int oit, int dither, int mode, int flags, unsigned features)
 {
-	GLuint *program = pdo ? &glprogs.world_pdo_decal_retro[dither] : &glprogs.world_decal_retro[oit][dither];
-	if (!*program)
+	int pass;
+	features &= QVR_WF_ALL;
+	// The shadows come and go with the lights (a shot's flash): the programs with them and without are made together,
+	// so that a fight doesn't stop to compile one
+	for (pass = 0; pass < 2; pass++)
 	{
-		if (pdo)
-			*program = GL_CreateProgram (world_vertex_shader, world_fragment_shader, "world pdo decal retro|OIT 0; DITHER %d; MODE %d; PDO 1", dither, WORLDSHADER_SOLID);
-		else
-			*program = GL_CreateProgram (world_vertex_shader, world_fragment_shader, "world decal retro|OIT %d; DITHER %d; MODE %d", oit, dither, WORLDSHADER_SOLID);
+		unsigned f = pass ? features ^ QVR_WF_SHADOWS : features;
+		GLuint *program = &world_programs[oit][dither][mode][flags][f];
+		if (!*program)
+			*program = GL_CreateProgram (world_vertex_shader, world_fragment_shader, "world|OIT %d; DITHER %d; MODE %d; QVR_WF %u%s%s",
+				oit, dither, mode, f, (flags & WORLDPROG_PDO) ? "; PDO 1" : "",
+				mode == WORLDSHADER_SOLID && !(flags & WORLDPROG_DECAL_RETRO) ? "; NO_DECAL_RETRO 1" : "");
 	}
-	return *program;
+	return world_programs[oit][dither][mode][flags][features];
 }
 
 /*
@@ -439,6 +444,7 @@ void GL_DeleteShaders (void)
 	gl_current_program = 0;
 
 	memset (&glprogs, 0, sizeof(glprogs));
+	memset (world_programs, 0, sizeof(world_programs)); // QVR
 }
 
 /*

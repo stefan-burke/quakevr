@@ -515,11 +515,12 @@ static GLuint R_ChooseBModelProgram (qboolean oit, qboolean alphatest, qboolean 
 		dither = r_softemu_lightmap_banding.value > 0.f ? 2 : 0;
 		break;
 	}
+	// QVR: each with only this frame's features compiled in (GL_WorldProgram)
 	if (!alphatest && r_framedata.decalclock[3] > 0.5f) // QVR: the decals with retro textures (VR_DecalsFrame: their set)
-		return GL_WorldDecalRetroProgram (oit, dither, pdo && !oit);
+		return GL_WorldProgram (oit, dither, WORLDSHADER_SOLID, WORLDPROG_DECAL_RETRO | (pdo && !oit ? WORLDPROG_PDO : 0), VR_WorldFeatures ());
 	if (pdo && !oit && !alphatest) // QVR: the opaque world writing its parallax hits' depth (vr_parallax_depth_write)
-		return glprogs.world_pdo[dither];
-	return glprogs.world[oit][dither][alphatest];
+		return GL_WorldProgram (0, dither, WORLDSHADER_SOLID, WORLDPROG_PDO, VR_WorldFeatures ());
+	return GL_WorldProgram (oit, dither, alphatest, 0, VR_WorldFeatures ());
 }
 
 typedef enum {
@@ -591,7 +592,7 @@ static void R_DrawBrushModels_Real (entity_t **ents, int count, brushpass_t pass
 	case BP_SHOWTRIS:
 		texbegin = 0;
 		texend = TEXTYPE_COUNT;
-		program = glprogs.world[0][0][0];
+		program = GL_WorldProgram (0, 0, WORLDSHADER_SOLID, 0, 0); // QVR
 		break;
 	}
 
@@ -868,7 +869,7 @@ void R_DrawBrushModels_Water (entity_t **ents, int count, qboolean translucent)
 
 	oit = translucent && R_GetEffectiveAlphaMode () == ALPHAMODE_OIT;
 	if (cl.worldmodel->haslitwater && r_litwater.value)
-		program = glprogs.world[oit][q_max(0, (int)softemu - 1)][WORLDSHADER_WATER];
+		program = GL_WorldProgram (oit, q_max(0, (int)softemu - 1), WORLDSHADER_WATER, 0, VR_WorldFeatures ()); // QVR
 	else
 		program = glprogs.water[oit][softemu == SOFTEMU_COARSE];
 

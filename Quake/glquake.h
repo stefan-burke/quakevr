@@ -585,10 +585,6 @@ typedef struct glprogs_s {
 	GLuint		oit_resolve[2];		// [msaa]
 
 	/* 3d */
-	GLuint		world[2][3][3];		// [OIT][standard/dithered/banded][solid/alpha test/water]
-	GLuint		world_pdo[3];		// QVR: [standard/dithered/banded] solid, not OIT, writing the parallax hits' depth (vr_parallax_depth_write)
-	GLuint		world_decal_retro[2][3];	// QVR: [OIT][standard/dithered/banded] solid, with the decals' retro textures' code (world[][][solid] and world_pdo go without it, NO_DECAL_RETRO): made when first needed (GL_WorldDecalRetroProgram)
-	GLuint		world_pdo_decal_retro[3];	// QVR: [standard/dithered/banded] world_pdo's, the same
 	GLuint		water[2][2];		// [OIT][dither]
 	GLuint		skystencil;
 	GLuint		world_depth;		// QVR: the opaque world's depth pre-pass (r_world.c)
@@ -620,7 +616,28 @@ void GL_UseProgram (GLuint program);
 void GL_ClearCachedProgram (void);
 void GL_CreateShaders (void);
 void GL_DeleteShaders (void);
-GLuint GL_WorldDecalRetroProgram (int oit, int dither, qboolean pdo); // QVR
+// QVR: the world shader's optional features (QVR_WF in world_fragment_shader), for GL_WorldProgram
+#define QVR_WF_RETRO		1	// retro textures (vr_retro)
+#define QVR_WF_RETROLIGHT	2	// retro lighting (vr_retrolight)
+#define QVR_WF_DECALS		4	// the decals in the world's shader (vr_decals_world)
+#define QVR_WF_NORMALS		8	// normal maps, the baked light's bumps, specular (vr_normalmaps, vr_specular)
+#define QVR_WF_PARALLAX		16	// parallax occlusion mapping (vr_parallax)
+#define QVR_WF_DETAIL		32	// detail textures (vr_detail)
+#define QVR_WF_SHADOWS		64	// the dynamic and map lights' shadows, lights through a teleporter
+#define QVR_WF_ALL			127
+// ... their names in the world shader, and WF_ON(feature): whether the program has it
+#define QVR_WF_GLSL \
+	"#define QVR_WF_RETRO "		QS_STRINGIFY (QVR_WF_RETRO) "\n" \
+	"#define QVR_WF_RETROLIGHT "	QS_STRINGIFY (QVR_WF_RETROLIGHT) "\n" \
+	"#define QVR_WF_DECALS "		QS_STRINGIFY (QVR_WF_DECALS) "\n" \
+	"#define QVR_WF_NORMALS "	QS_STRINGIFY (QVR_WF_NORMALS) "\n" \
+	"#define QVR_WF_PARALLAX "	QS_STRINGIFY (QVR_WF_PARALLAX) "\n" \
+	"#define QVR_WF_DETAIL "		QS_STRINGIFY (QVR_WF_DETAIL) "\n" \
+	"#define QVR_WF_SHADOWS "	QS_STRINGIFY (QVR_WF_SHADOWS) "\n" \
+	"#define WF_ON(f) ((QVR_WF & (f)) != 0)\n"
+#define WORLDPROG_PDO			1	// GL_WorldProgram's flags: writing the parallax hits' depth
+#define WORLDPROG_DECAL_RETRO	2	// ... with the decals' retro textures' code
+GLuint GL_WorldProgram (int oit, int dither, int mode, int flags, unsigned features); // QVR
 void GL_ReloadShaders_f (void); // QVR: tests (vr_shader_reload)
 
 typedef struct glframebufs_s {
