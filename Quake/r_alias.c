@@ -696,6 +696,7 @@ void R_FlushAliasInstances (qboolean showtris)
 		textures[2] = TexMgr_NormalMap (showtris || r_lightmap_cheatsafe ? NULL : hdr->gltextures[skinnum][anim]); // QVR
 
 		GL_BindTextures (0, 3, textures); // QVR: and the normal map
+		GL_Uniform1iFunc (87, textures[1] == blacktexture); // QVR (Linux): the skin's fullbrights read only if it has any
 		GL_DrawElementsInstancedFunc (GL_TRIANGLES, hdr->numindexes, GL_UNSIGNED_SHORT, (void*)hdr->eboofs, drawcount); // QVR: drawcount
 		rs_aliaspasses += hdr->numtris * drawcount;
 	}
@@ -732,6 +733,7 @@ void R_FlushAliasInstances (qboolean showtris)
 			textures[2] = TexMgr_NormalMap (showtris || r_lightmap_cheatsafe ? NULL : hdr->gltextures[skinnum][anim]); // QVR
 
 			GL_BindTextures (0, 3, textures); // QVR: and the normal map
+			GL_Uniform1iFunc (87, textures[1] == blacktexture); // QVR (Linux)
 			GL_DrawElementsInstancedFunc (GL_TRIANGLES, hdr->numindexes, GL_UNSIGNED_SHORT, (void*)hdr->eboofs, drawcount); // QVR: drawcount
 			rs_aliaspasses += hdr->numtris * drawcount;
 		}

@@ -1486,6 +1486,7 @@ NOISE_FUNCTIONS
 "layout(binding=0) uniform sampler2D Tex;\n"
 "layout(binding=1) uniform sampler2D FullbrightTex;\n"
 "layout(binding=2) uniform sampler2D NormalTex; // QVR\n"
+"layout(location=87) uniform int AliasNoFullbright; // QVR (Linux): 1: the skin has no fullbrights (0, the default: read them)\n"
 "\n"
 "#if MODE == " QS_STRINGIFY (ALIASSHADER_NOPERSP) "\n"
 "	layout(location=0) noperspective in vec2 in_texcoord;\n"
@@ -1550,11 +1551,15 @@ QVR_ALIAS_FS_LIGHT // QVR: wounds, normal maps, occlusion, the model's light
 "	if (a2c)\n"
 "		result.a = clamp(coverage, 0.0, 1.0); // QVR: the samples it covers (GL_SAMPLE_ALPHA_TO_ONE writes 1)\n"
 "#endif\n"
+"	vec3 fullbright = vec3(0.);\n"
+"	if (AliasNoFullbright == 0) // QVR (Linux): not read for a skin without fullbrights (Quake's black texture, R_FlushAliasInstances): with retro textures a second block lookup\n"
+"	{\n"
 "#if MODE == " QS_STRINGIFY (ALIASSHADER_NOPERSP) "\n"
-"	vec3 fullbright = textureLod(FullbrightTex, uv, 0.).rgb;\n" // QVR: fullbright: dimmed or boosted (QVR_ALIAS_FS_GLOW)
+"		fullbright = textureLod(FullbrightTex, uv, 0.).rgb;\n" // QVR: fullbright: dimmed or boosted (QVR_ALIAS_FS_GLOW)
 "#else\n"
-"	vec3 fullbright = Retro > 0 ? RetroSample(FullbrightTex, uv, duvdx, duvdy, false).rgb : textureGrad(FullbrightTex, uv, duvdx, duvdy).rgb; // QVR: uv moved by parallax mapping; retro textures\n"
+"		fullbright = Retro > 0 ? RetroSample(FullbrightTex, uv, duvdx, duvdy, false).rgb : textureGrad(FullbrightTex, uv, duvdx, duvdy).rgb; // QVR: uv moved by parallax mapping; retro textures\n"
 "#endif\n"
+"	}\n"
 QVR_ALIAS_FS_GLOW // QVR: fullbrights, wounds' glow, force grab's glow, morphs
 "	result.rgb = clamp(result.rgb, 0.0, SceneTone.x); // QVR: above 1 in the eyes' float scene (vr_tonemap)\n"
 "	float fog = exp2(abs(Fog.w) * -dot(in_pos, in_pos));\n"\
