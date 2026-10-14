@@ -18,6 +18,7 @@
 #include <signal.h>
 #include <spawn.h>
 #include <sys/wait.h>
+#include <stdlib.h>
 #include <unistd.h>
 extern char** environ;
 #endif
