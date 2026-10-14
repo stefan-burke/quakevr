@@ -66,7 +66,12 @@
 #include "Zancle/String/String.hpp"
 #include "vr_zancle.hpp"
 
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
 #include <emmintrin.h> // (SSE2: x64's baseline)
+#else
+#define SIMDE_ENABLE_NATIVE_ALIASES
+#include <simde/x86/sse2.h> // elsewhere (ARM64): SSE2 through SIMDe, on NEON
+#endif
 #include <stdio.h>
 
 namespace qvr::audio

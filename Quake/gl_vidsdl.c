@@ -473,6 +473,12 @@ static qboolean VID_SetMode (int width, int height, int refreshrate, qboolean fu
 		if (VR_DiagnosticsOn ()) // QVR: diagnostics mode: a debug context (every GL message; vr/vr_diagnostics.cpp)
 			SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 #endif
+		if (getenv ("QVR_GL_ROBUST")) // QVR (Linux): a robust context, so Zink reads out of range as zeros instead of faulting the GPU
+		{
+			int ctxflags = 0;
+			SDL_GL_GetAttribute (SDL_GL_CONTEXT_FLAGS, &ctxflags);
+			SDL_GL_SetAttribute (SDL_GL_CONTEXT_FLAGS, ctxflags | SDL_GL_CONTEXT_ROBUST_ACCESS_FLAG);
+		}
 		draw_context = SDL_CreateWindow (caption, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, flags);
 		if (!draw_context) { // scale back SDL_GL_DEPTH_SIZE
 			SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);

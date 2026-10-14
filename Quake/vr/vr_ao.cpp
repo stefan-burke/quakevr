@@ -47,7 +47,12 @@
 #include "SDL.h"
 #endif
 
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
 #include <immintrin.h> // (the bake's rays: SSE2, x64's baseline, four at a time; AVX, when there, eight)
+#else
+#define SIMDE_ENABLE_NATIVE_ALIASES
+#include <simde/x86/avx.h> // elsewhere (ARM64): SSE2 and AVX through SIMDe, on NEON (no AVX at run time: SDL_HasAVX)
+#endif
 #include <stdio.h>
 #include <string.h>
 
@@ -1069,7 +1074,7 @@ void raysSse(const RayInput& in)
     }
 }
 
-#if defined(__clang__) || defined(__GNUC__)
+#if (defined(__clang__) || defined(__GNUC__)) && (defined(__x86_64__) || defined(__i386__))
 #define QVR_TARGET_AVX __attribute__((target("avx")))
 #else
 #define QVR_TARGET_AVX

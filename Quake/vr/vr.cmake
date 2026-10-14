@@ -22,8 +22,7 @@ target_compile_definitions(ironwail PRIVATE ZA_STATIC)
 file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/../../VERSION" QVR_VERSION LIMIT_COUNT 1)
 string(STRIP "${QVR_VERSION}" QVR_VERSION)
 target_compile_definitions(ironwail PRIVATE "QVR_VERSION=\"${QVR_VERSION}\"")
-# OpenXR: the vendored Windows loader. The backend's graphics binding is OpenGL on Windows (WGL)
-# only, so elsewhere the build has the mock backend alone until it gets a GLX/EGL binding.
+# OpenXR: the vendored Windows loader, its graphics binding OpenGL through WGL; on Linux the system loader, through EGL.
 if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
 	set(QVR_OPENXR_DIR "${CMAKE_CURRENT_LIST_DIR}/../../Windows/OpenXR")
 	target_include_directories(ironwail PRIVATE "${QVR_OPENXR_DIR}/include")
@@ -31,6 +30,16 @@ if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
 	target_compile_definitions(ironwail PRIVATE QVR_HAVE_OPENXR)
 	add_custom_command(TARGET ironwail POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different "${QVR_OPENXR_DIR}/lib/x64/openxr_loader.dll" $<TARGET_FILE_DIR:ironwail>)
+elseif (UNIX AND NOT APPLE)
+	# Linux: the system's OpenXR loader, bound through EGL (XR_MNDX_egl_enable): the game's GL context must be an EGL
+	# one (SDL_VIDEO_X11_FORCE_EGL=1 on X11; Wayland's always is).
+	option(QVR_OPENXR "OpenXR backend (the system's loader, EGL binding)" ON)
+	if (QVR_OPENXR)
+		pkg_check_modules(QVR_OPENXR_LOADER REQUIRED IMPORTED_TARGET openxr)
+		find_package(OpenGL REQUIRED COMPONENTS EGL)
+		target_link_libraries(ironwail PRIVATE PkgConfig::QVR_OPENXR_LOADER OpenGL::EGL)
+		target_compile_definitions(ironwail PRIVATE QVR_HAVE_OPENXR)
+	endif()
 endif()
 
 # No exceptions (docs/vr-port/CODE_STYLE.md): the module and Zancle are built without them (clang-cl /EHs-c-, after

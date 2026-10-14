@@ -28,6 +28,7 @@
 #include "Zancle/Math/MinMax.hpp"
 #include "Zancle/String/String.hpp"
 #include "vr_zancle.hpp"
+#include <stdlib.h>
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -357,8 +358,9 @@ void endPhaseFrame(za::I64 now, za::I64 start, za::I64 end)
     za::fill(phaseFrameNs, za::I64{0});
     s.pending = keep && s.recCount > 0;
 
-    if(!phaseGpuMade && GL_QueryCounterFunc && GL_GetQueryObjectui64vFunc && GL_GetQueryObjectivFunc &&
-        GL_GenQueriesFunc)
+    // QVR_NO_GPU_TIMERS: no timer queries at all (Zink on Turnip, the Steam Frame's GL, faults the GPU on them).
+    if(!phaseGpuMade && !getenv("QVR_NO_GPU_TIMERS") && GL_QueryCounterFunc && GL_GetQueryObjectui64vFunc &&
+        GL_GetQueryObjectivFunc && GL_GenQueriesFunc)
     {
         for(PhaseGpuSlot& slot : phaseSlots)
         {
@@ -1148,7 +1150,7 @@ extern "C" void VR_ProfileFrame()
     // The GPU's times on one frame in vr_profile_gpu: each timer query stalls the GPU's pipeline a little (about 0.12 ms
     // of the mock's eyes a frame for all the scopes' queries), so by default one frame in 4 is timed, and averaged.
     const int gpuEvery = static_cast<int>(vr_profile_gpu.value);
-    gpuOk = GL_QueryCounterFunc && GL_GetQueryObjectui64vFunc && GL_GetQueryObjectivFunc && GL_GenQueriesFunc &&
+    gpuOk = !getenv("QVR_NO_GPU_TIMERS") && GL_QueryCounterFunc && GL_GetQueryObjectui64vFunc && GL_GetQueryObjectivFunc && GL_GenQueriesFunc &&
             gpuEvery >= 1 && gpuFrameCount++ % static_cast<unsigned>(gpuEvery) == 0;
     if(active)
     {
