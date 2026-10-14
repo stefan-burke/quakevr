@@ -11,8 +11,10 @@
 
 #ifdef QVR_HAVE_OPENXR
 
+#include "vr_bench.hpp"
 #include "vr_engine.hpp"
 #include "vr_input.hpp"
+#include "vr_loading.hpp"
 #include "vr_profile.hpp"
 #include "vr_xr_runtime.hpp"
 
@@ -586,6 +588,7 @@ public:
         endInfo.layerCount = count;
         endInfo.layers = count ? submitted : nullptr;
         ending.pending = true;
+        ending.eyes = rendered && !held; // a held frame shows the last images again, not new ones
         timing.frames++;
         if(!endsFrameLate())
         {
@@ -600,7 +603,13 @@ public:
         return steamvr;
     }
 
-    // xrEndFrame for the frame endFrame kept, if any.
+    // xrEndFrame for the frame endFrame kept, if any. On SteamVR (endsFrameLate) this is the frame's real
+    // submission, in the next frame's begin: the "xr submit" phase is measured here — inside that begin's
+    // "xr wait", for the call waits for the GPU as that does — where the backends that submit in endFrame are
+    // measured around it in vr_stereo.cpp; and the bookkeeping that follows a submission runs with it (the
+    // bench's pose-to-submit, its pose stamp still the submitted frame's, for poseSampled that overwrites it
+    // runs after beginFrame returns, and the loading notice's shown frames), as vr_stereo.cpp runs it for the
+    // others.
     void submitEnd()
     {
         if(!ending.pending)
@@ -608,9 +617,20 @@ public:
             return;
         }
         ending.pending = false;
+        const bool late = endsFrameLate();
+        if(late)
+        {
+            profile::begin("xr submit", true); // xrEndFrame
+        }
         const double t0 = Sys_DoubleTime();
         check(xrEndFrame(session, &ending.info), "xrEndFrame");
         timeCall(CallEnd, t0);
+        if(late)
+        {
+            profile::end();
+            bench::submitted();
+            loading::submitted(ending.eyes);
+        }
     }
 
     [[nodiscard]] unsigned acquirePanelImage(int width, int height) override
@@ -726,6 +746,7 @@ private:
         const XrCompositionLayerBaseHeader* layers[2]{};
         XrFrameEndInfo info{XR_TYPE_FRAME_END_INFO};
         bool pending{false};
+        bool eyes{false}; // the kept frame had the eyes' images (endFrame's rendered, a held one no): told at its submission (submitEnd)
     } ending; // endFrame's layers, until submitEnd
     XrFrameState frameState{XR_TYPE_FRAME_STATE};
     XrView views[2]{{XR_TYPE_VIEW}, {XR_TYPE_VIEW}};

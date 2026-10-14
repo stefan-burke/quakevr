@@ -832,9 +832,18 @@ extern "C" int VR_RenderView()
     // window keeps its last image.
     if(frame.hold)
     {
-        profile::begin("xr submit", true); // xrEndFrame
-        be->endFrame(true);
-        profile::end();
+        // A backend that ends each frame late (endsFrameLate: SteamVR) only keeps it here; its xrEndFrame,
+        // measured, is in submitEnd, at the next frame's begin
+        if(be->endsFrameLate())
+        {
+            be->endFrame(true);
+        }
+        else
+        {
+            profile::begin("xr submit", true); // xrEndFrame
+            be->endFrame(true);
+            profile::end();
+        }
         return 1;
     }
 
@@ -992,11 +1001,20 @@ extern "C" int VR_RenderView()
     GL_BindFramebufferFunc(GL_FRAMEBUFFER, windowTarget);
 
     // Both eyes, or no projection layer at all (an eye's image could not be acquired).
-    profile::begin("xr submit", true); // xrEndFrame
-    be->endFrame(eyesRendered == 2);
-    profile::end();
-    bench::submitted();
-    loading::submitted(eyesRendered == 2); // (the level change's notice was in them: vr_loading.cpp)
+    // A backend that ends each frame late (endsFrameLate: SteamVR) only keeps the frame here, and is given it at
+    // the next frame's begin (submitEnd): its xrEndFrame is measured there, and this bookkeeping with it
+    if(be->endsFrameLate())
+    {
+        be->endFrame(eyesRendered == 2);
+    }
+    else
+    {
+        profile::begin("xr submit", true); // xrEndFrame
+        be->endFrame(eyesRendered == 2);
+        profile::end();
+        bench::submitted();
+        loading::submitted(eyesRendered == 2); // (the level change's notice was in them: vr_loading.cpp)
+    }
 
     // The window's spectator camera, once the headset has its images: it does not delay them.
     if(window::view() == window::View::Spectator && eyesRendered == 2)
