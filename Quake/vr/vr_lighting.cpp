@@ -2620,7 +2620,7 @@ extern "C" unsigned VR_WorldFeatures(void)
         return QVR_WF_ALL;
     }
     unsigned f = 0;
-    if(vr_retro.value != 0.f)
+    if(VR_RetroWorldUsed(0)) // (the liquids' program asks for its own: r_world.c)
     {
         f |= QVR_WF_RETRO;
     }

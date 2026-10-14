@@ -1607,6 +1607,45 @@ extern "C" void VR_RetroCall(entity_t* e, const texture_t* t, float out[4])
     }
 }
 
+// QVR (Linux): whether the world's solid surfaces (liquid 0) or its liquids (1) can be drawn with retro textures: their
+// categories on, or an override that can turn a texture or a brush model on where its category is off (VR_RetroCall,
+// VR_RetroInstance). VR_WorldFeatures leaves the retro textures' code out of the world's programs otherwise.
+extern "C" int VR_RetroWorldUsed(int liquid)
+{
+    if(!on())
+    {
+        return 0;
+    }
+    if(liquid)
+    {
+        return categorySet(Category::Liquids) > 0;
+    }
+    for(const Category c : {Category::World, Category::Brush, Category::Items, Category::Props})
+    {
+        if(categorySet(c) > 0)
+        {
+            return 1;
+        }
+    }
+    ensureLoaded();
+    const int onParam = static_cast<int>(Param::On);
+    for(const OverrideMap* map : {&user, &shipped})
+    {
+        for(const auto& [key, o] : *map)
+        {
+            if(map == &shipped && user.find(key) != user.end())
+            {
+                continue; // (the user's entry replaces it)
+            }
+            if(strncmp(key.cStr(), "texture:", 8) == 0 || (o.mode[onParam] == OverrideMode::Replace && o.value[onParam] != 0.f))
+            {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 // R_InitBModelInstance: the entity's set (0 none).
 extern "C" void VR_RetroInstance(entity_t* e, float out[4])
 {

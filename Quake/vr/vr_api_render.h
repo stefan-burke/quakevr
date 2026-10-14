@@ -157,7 +157,8 @@ int VR_AlphaMipCoverage (void);							// TexMgr_LoadImage32: nonzero to keep alp
 int VR_AlphaToCoverage (void);							// alpha-tested draws (r_world.c, r_alias.c): nonzero for alpha to coverage (vr_alpha_coverage, with MSAA)
 float VR_ParallaxDepth (const struct entity_s *e, const float matrix[16], const float modelscale[3], int heights); // instance: its parallax depth in units (0 off); matrix the drawn one, modelscale an alias model's (NULL: a brush model); heights: its skin's normal map's (TexMgr_NormalMapParallax: 0 none, 1 made, 2 authored)
 unsigned VR_AliasFeatures (void); // QVR (Linux): the model shader's features this frame needs (QVR_AF_*: GL_AliasProgram)
-unsigned VR_WorldFeatures (void); // QVR (Linux): the world shader's features this frame needs (QVR_WF_*: GL_WorldProgram)
+unsigned VR_WorldFeatures (void);
+int VR_RetroWorldUsed (int liquid); // QVR (Linux): retro textures possible on the world's solid surfaces (0) or liquids (1) // QVR (Linux): the world shader's features this frame needs (QVR_WF_*: GL_WorldProgram)
 int VR_ModelLightParity (void);							// R_SetupAliasLighting: models as bright as the floor under them
 float VR_ModelBumps (const struct entity_s *e, int authored);	// instance: how much the skin's bumps shade the model's own light (0 none; authored: its normal map is a file's)
 float VR_ModelNormalMapScale (int authored);				// instance: how much its normal map bends the normal (vr_normalmap_strength, or vr_normalmap_authored)

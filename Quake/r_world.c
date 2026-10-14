@@ -869,7 +869,7 @@ void R_DrawBrushModels_Water (entity_t **ents, int count, qboolean translucent)
 
 	oit = translucent && R_GetEffectiveAlphaMode () == ALPHAMODE_OIT;
 	if (cl.worldmodel->haslitwater && r_litwater.value)
-		program = GL_WorldProgram (oit, q_max(0, (int)softemu - 1), WORLDSHADER_WATER, 0, VR_WorldFeatures ()); // QVR (Linux)
+		program = GL_WorldProgram (oit, q_max(0, (int)softemu - 1), WORLDSHADER_WATER, 0, VR_WorldFeatures () | (VR_RetroWorldUsed (1) ? QVR_WF_RETRO : 0)); // QVR (Linux): the liquids' retro textures
 	else
 		program = glprogs.water[oit][softemu == SOFTEMU_COARSE];
 
