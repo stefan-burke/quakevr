@@ -34,6 +34,7 @@ static void Mod_LoadAliasModel (qmodel_t *mod, void *buffer);
 static void Mod_LoadMD3Model (qmodel_t* mod, const char* buffer);
 static qboolean Mod_LoadMD5MeshModel (qmodel_t *mod, const char *buffer);
 static qmodel_t *Mod_LoadModel (qmodel_t *mod, qboolean crash);
+static void Mod_SetAliasSortKey (qmodel_t *mod);
 
 static void Mod_Print (void);
 
@@ -442,7 +443,10 @@ static qmodel_t *Mod_LoadModel (qmodel_t *mod, qboolean crash)
 	VR_ModelMetadataChanged (mod); // QVR: alias-cache eviction and explicit reload invalidate copied metadata
 	VR_ModelSourcesForget (mod); // QVR: the files it was made from (a campaign switch's check: recorded below)
 	if (VR_SyntheticModel (mod)) // QVR: a model made in memory from another (a ragdoll's skinned body, vr/vr_ragdoll.cpp)
+	{
+		Mod_SetAliasSortKey (mod); // QVR: with none, every ragdoll sorted as one model and broke the others' batches
 		return mod;
+	}
 	buf = VR_DerivedModelFile (mod->name, &mod->path_id); // QVR: a model made from another's file (a taken torch's flame)
 	derived = buf != NULL; // QVR
 	if (!buf)
@@ -3654,13 +3658,18 @@ static void Mod_LoadAliasModel (qmodel_t *mod, void *buffer)
 		return;
 	memcpy (mod->cache.data, pheader, total);
 
+	Mod_SetAliasSortKey (mod);
+
+	Hunk_FreeToLowMark (start);
+}
+
+static void Mod_SetAliasSortKey (qmodel_t *mod)
+{
 	mod->sortkey = ((CRC_Block (mod->name, strlen(mod->name)) >> 1) & MODSORT_FRAMEMASK) << MODSORT_FRAMEBITS;
 	if (mod->flags & MF_HOLEY)
 		mod->sortkey |= MODSORT_ALIAS_ALPHATEST;
 	else
 		mod->sortkey &= ~MODSORT_ALIAS_ALPHATEST;
-
-	Hunk_FreeToLowMark (start);
 }
 
 //=============================================================================
