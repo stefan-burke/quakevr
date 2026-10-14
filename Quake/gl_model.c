@@ -3521,6 +3521,7 @@ static void Mod_LoadAliasModel (qmodel_t *mod, void *buffer)
 
 			if (loaders[iter].load_func (mod, path)) {
 				VR_TimeAdd ("  their replacements (md5, md3) looked for and loaded", Sys_DoubleTime () - t0); // QVR
+				Mod_SetAliasSortKey (mod); // QVR: their loaders make no sort key (the .mdl path makes its below): without one they all sorted as one model
 				return;
 			}
 		}
@@ -3665,7 +3666,10 @@ static void Mod_LoadAliasModel (qmodel_t *mod, void *buffer)
 
 static void Mod_SetAliasSortKey (qmodel_t *mod)
 {
-	mod->sortkey = ((CRC_Block (mod->name, strlen(mod->name)) >> 1) & MODSORT_FRAMEMASK) << MODSORT_FRAMEBITS;
+	// QVR: the model's own place among the alias models, that a run of one model and skin is drawn as one
+	// instanced batch (R_Alias_CanAddToBatch): a hash of its name over the model bits, shifted one clear of
+	// their topmost, which the alphatest flag below takes (MF_HOLEY skins apart: their draw tests alpha)
+	mod->sortkey = ((CRC_Block (mod->name, strlen(mod->name)) >> 1) & MODSORT_MODELMASK) << MODSORT_FRAMEBITS;
 	if (mod->flags & MF_HOLEY)
 		mod->sortkey |= MODSORT_ALIAS_ALPHATEST;
 	else
