@@ -621,6 +621,16 @@ void GL_ClearCachedProgram (void);
 void GL_CreateShaders (void);
 void GL_DeleteShaders (void);
 GLuint GL_WorldDecalRetroProgram (int oit, int dither, qboolean pdo); // QVR
+// QVR (Linux): the world shader's optional features (QVR_WF in world_fragment_shader), for GL_WorldProgram
+#define QVR_WF_RETRO		1	// retro textures (vr_retro)
+#define QVR_WF_RETROLIGHT	2	// retro lighting (vr_retrolight)
+#define QVR_WF_DECALS		4	// the decals in the world's shader (vr_decals_world)
+#define QVR_WF_NORMALS		8	// normal maps, the baked light's bumps, specular (vr_normalmaps, vr_specular)
+#define QVR_WF_PARALLAX		16	// parallax occlusion mapping (vr_parallax)
+#define QVR_WF_DETAIL		32	// detail textures (vr_detail)
+#define QVR_WF_SHADOWS		64	// the dynamic and map lights' shadows, lights through a teleporter
+#define QVR_WF_ALL			127
+GLuint GL_WorldProgram (int oit, int dither, int mode, int kind, unsigned features); // QVR (Linux)
 void GL_ReloadShaders_f (void); // QVR: tests (vr_shader_reload)
 
 typedef struct glframebufs_s {

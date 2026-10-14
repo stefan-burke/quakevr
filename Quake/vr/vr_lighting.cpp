@@ -17,6 +17,8 @@
 #include "vr_view.hpp"
 #include "vr_water.hpp"
 
+#include <stdlib.h>
+
 #include "Zancle/Algorithm/AnyOf.hpp"
 #include "Zancle/Algorithm/Sort.hpp"
 #include "Zancle/Base/PtrDiffT.hpp"
@@ -2604,4 +2606,52 @@ void lighting::shadowCounts(int& dlights, int& mapLights)
     {
         mapLights += slot.light >= 0 && slot.fade > 0.f ? 1 : 0;
     }
+}
+
+// QVR (Linux): the world shader's features this frame needs (glquake.h's QVR_WF_*), for GL_WorldProgram: the rest are
+// compiled out of the program the world is drawn with. Each is what the shader's own branch tests: the frame's data
+// (set above, before the world is drawn) or the lights' (a shadow, a teleporter's path). QVR_WORLD_UBER: all of them,
+// to compare with the full shader.
+extern "C" unsigned VR_WorldFeatures(void)
+{
+    static const bool uber = getenv("QVR_WORLD_UBER") != nullptr;
+    if(uber)
+    {
+        return QVR_WF_ALL;
+    }
+    unsigned f = 0;
+    if(vr_retro.value != 0.f)
+    {
+        f |= QVR_WF_RETRO;
+    }
+    if(r_framedata.retrolight[2][3] > 0.f)
+    {
+        f |= QVR_WF_RETROLIGHT;
+    }
+    if(r_framedata.decalclock[2] > 0.f)
+    {
+        f |= QVR_WF_DECALS;
+    }
+    if(r_framedata.lighttweak[3] > 0.f || r_framedata.lighttweak[2] > 0.f)
+    {
+        f |= QVR_WF_NORMALS;
+    }
+    if(vr_parallax.value != 0.f && vr_normalmaps.value != 0.f)
+    {
+        f |= QVR_WF_PARALLAX;
+    }
+    if(r_framedata.detail[0] > 0.f)
+    {
+        f |= QVR_WF_DETAIL;
+    }
+    for(int i = 0; i < r_framedata.numlights; i++)
+    {
+        const gpulight_t& l = r_lightbuffer.lights[i];
+        if(l.shadow[2] > 0.f || l.shadow[3] != 0.f || l.gatelo[3] > 0.f)
+        {
+            f |= QVR_WF_SHADOWS;
+            break;
+        }
+    }
+    return f;
 }

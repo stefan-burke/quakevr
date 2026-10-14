@@ -26,7 +26,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "q_ctype.h"
 
 glprogs_t glprogs;
-static GLuint gl_programs[128];
+static GLuint gl_programs[512]; // QVR (Linux): room for the world's feature variants (GL_WorldProgram)
 static GLuint gl_current_program;
 static int gl_num_programs;
 static int gl_shader_ab; // QVR: tests: QVR_SHADER_AB in every shader (vr_shader_reload)
@@ -422,6 +422,36 @@ GLuint GL_WorldDecalRetroProgram (int oit, int dither, qboolean pdo)
 
 /*
 =============
+GL_WorldProgram
+
+QVR (Linux): the world's program with only the features in `features` (QVR_WF_*, VR_WorldFeatures) compiled in,
+made the first time it is needed. The full programs branch on uniforms at run time, but a GPU still pays for the
+untaken code: on the Steam Frame (Adreno through Zink) the full world shader is about 9,700 instructions with 32
+registers a thread, against twice the occupancy and about half the world's GPU time without the features that are off.
+kind: 1 writing the parallax hits' depth (world_pdo's), 2 with the decals' retro textures' code (GL_WorldDecalRetroProgram's).
+=============
+*/
+static GLuint world_variants[2][3][3][4][QVR_WF_ALL + 1]; // [OIT][dither][mode][kind][features]
+
+GLuint GL_WorldProgram (int oit, int dither, int mode, int kind, unsigned features)
+{
+	GLuint *program;
+	int pass;
+	// The shadows come and go with the lights (a shot's flash): the program with them and without, both at once, so
+	// that a fight doesn't stop to compile one
+	for (pass = 0; pass < 2; pass++)
+	{
+		unsigned f = (pass ? features ^ QVR_WF_SHADOWS : features) & QVR_WF_ALL;
+		program = &world_variants[oit][dither][mode][kind][f];
+		if (!*program)
+			*program = GL_CreateProgram (world_vertex_shader, world_fragment_shader, "world|OIT %d; DITHER %d; MODE %d; QVR_WF %u%s%s",
+				oit, dither, mode, f, (kind & 1) ? "; PDO 1" : "", mode == WORLDSHADER_SOLID && !(kind & 2) ? "; NO_DECAL_RETRO 1" : "");
+	}
+	return world_variants[oit][dither][mode][kind][features & QVR_WF_ALL];
+}
+
+/*
+=============
 GL_DeleteShaders
 =============
 */
@@ -439,6 +469,7 @@ void GL_DeleteShaders (void)
 	gl_current_program = 0;
 
 	memset (&glprogs, 0, sizeof(glprogs));
+	memset (world_variants, 0, sizeof(world_variants)); // QVR (Linux)
 }
 
 /*

@@ -694,6 +694,7 @@ QVR_PARALLAX_DEPTH_OUT // PDO 1
 QVR_WORLD_DEPTH_FS_MAIN;
 
 static const char world_fragment_shader[] =
+"#ifndef QVR_WF\n#define QVR_WF 127\n#endif\n" // QVR (Linux): the features this program has (QVR_WF_*: GL_WorldProgram); the others compiled out
 "#if BINDLESS\n"
 "	#extension GL_ARB_bindless_texture : require\n"
 "#else\n"
@@ -771,7 +772,7 @@ QVR_PARALLAX_DEPTH_OUT // QVR: pixel depth offset (vr_parallax_depth_write): PDO
 "	// the surface's (the moved coordinates jump where the height field hides itself)\n"
 "	vec2 puv = uv;\n"
 "#if MODE == " QS_STRINGIFY (WORLDSHADER_SOLID) "\n"
-"	bool parallax = in_pdepth > 0.; // the instance's depth: the world's, an item box's (vr_parallax_items)\n"
+"	bool parallax = (QVR_WF & 16) != 0 && in_pdepth > 0.; // the instance's depth: the world's, an item box's (vr_parallax_items)\n"
 "	if (parallax)\n"
 "		puv = ParallaxUV(NormalTex, uv, duvdx, duvdy, dpdx, dpdy, facing, in_pos - EyePos, in_pdepth, Parallax.z, in_uvclamp);\n"
 "#if QVR_PDO\n"
@@ -781,9 +782,11 @@ QVR_PARALLAX_DEPTH_OUT // QVR: pixel depth offset (vr_parallax_depth_write): PDO
 "#else\n"
 "	const bool parallax = false;\n" // QVR: no parallax mapping here
 "#endif\n"
-"	RetroBegin(in_retro.z, in_retro.xy, duvdx, duvdy, dpdx, dpdy, facing);\n" // QVR: retro textures (vr_retro.h; Retro 0: none)
+"#if (QVR_WF & 1) != 0\n"
+"	RetroBegin(in_retro.z, in_retro.xy, duvdx, duvdy, dpdx, dpdy, facing);\n"
+"#endif\n" // QVR: retro textures (vr_retro.h; Retro 0: none)
 "	bool rl_lightmapped = (in_flags & CF_NOLIGHTMAP) == 0u;\n" // QVR: retro lighting (vr_retrolight.h): the face's texel grid (its lightmap's, less 8)
-"	if (RetroLight[2].w > 0.)\n"
+"	if ((QVR_WF & 2) != 0 && RetroLight[2].w > 0.)\n"
 "	{\n"
 "		vec2 rl_t = rl_lightmapped ? in_lmuv * (vec2(textureSize(LMTex, 0).xy) * 16.) - 8.0 : in_uv * in_retro.xy;\n"
 "		RetroLightBegin(rl_t, dFdx(rl_t), dFdy(rl_t), dpdx, dpdy, RetroLight[0]);\n"
@@ -830,7 +833,7 @@ QVR_WORLD_FS_DECALS // QVR: the decals on the world (vr/vr_decals.cpp)
 "	lmuv = (floor(lmuv * lmsize) + 0.5) / lmsize;\n"
 "#endif // DITHER\n"
 "	if (rl_lightmapped)\n" // QVR: retro lighting: the lightmap on its blocky grid (vr_retrolight.h)
-"		lmuv = RetroLightmapUV(lmuv, vec2(textureSize(LMTex, 0).xy) * 16.);\n"
+"		lmuv = (QVR_WF & 2) == 0 ? lmuv : RetroLightmapUV(lmuv, vec2(textureSize(LMTex, 0).xy) * 16.);\n"
 "	vec4 lm0 = textureLod(LMTex, lmuv, 0.);\n"
 "	vec3 total_light;\n"
 "	if (in_styles.y < 0.) // single style fast path\n"
@@ -858,8 +861,8 @@ QVR_WORLD_FS_DECALS // QVR: the decals on the world (vr/vr_decals.cpp)
 "\n"
 QVR_WORLD_FS_LIGHT // QVR: light contrast, normal maps in the baked light, specular
 "	vec3 dynamic_light = vec3(0.);\n" // QVR: out here, for retro lighting's levels after the lights
-"	vec3 rl_pos = RetroLightAt(in_pos, RetroLight[1].w); // QVR: retro lighting: where the dynamic lights are found (their blocks)\n"
-"	vec3 rl_spos = RetroShadowAt(in_pos, rl_pos), rl_mpos = RetroShadowAt(in_pos, in_pos); // ... their shadows; the map lights'\n"
+"	vec3 rl_pos = (QVR_WF & 2) == 0 ? in_pos : RetroLightAt(in_pos, RetroLight[1].w); // QVR: retro lighting: where the dynamic lights are found (their blocks)\n"
+"	vec3 rl_spos = (QVR_WF & 2) == 0 ? in_pos : RetroShadowAt(in_pos, rl_pos), rl_mpos = (QVR_WF & 2) == 0 ? in_pos : RetroShadowAt(in_pos, in_pos); // ... their shadows; the map lights'\n"
 "	if (NumLights > 0u)\n"
 "	{\n"
 "		uint i, ofs;\n"
@@ -902,7 +905,7 @@ QVR_WORLD_FS_LIGHT_SHADOW // QVR: a light's shadow and spot cone
 "					if (add <= 0.) // QVR\n"
 "						continue;\n"
 "					vec3 dir = normalize(tl); // QVR: the direction to the light once, for its cone, angle and sheen\n"
-"					add *= LightShadow(l, rl_spos, facing, SpotCone(l, rl_spos_same ? dir : normalize(l.origin - rl_spos))); // QVR\n"
+"					add *= (QVR_WF & 64) == 0 ? SpotCone(l, rl_spos_same ? dir : normalize(l.origin - rl_spos)) : LightShadow(l, rl_spos, facing, SpotCone(l, rl_spos_same ? dir : normalize(l.origin - rl_spos))); // QVR\n"
 "					float ndl = dot(bumped, dir); // QVR\n"
 "					specular_light += add * 2.0 * LightSpecular(bumped, ndl, dir, to_eye) * l.color; // QVR\n"
 "					add *= LightAngle(ndl, 0.0); // QVR\n"
@@ -912,10 +915,10 @@ QVR_WORLD_FS_LIGHT_SHADOW // QVR: a light's shadow and spot cone
 "		}\n"
 "	}\n"
 "#if MODE == " QS_STRINGIFY (WORLDSHADER_ALPHATEST) "\n" // QVR: retro lighting's levels (vr_retrolight.h; no derivatives after the discard)
-"	if (RetroLight[2].w > 0.)\n"
+"	if ((QVR_WF & 2) != 0 && RetroLight[2].w > 0.)\n"
 "		RetroLightWorld(total_light, dynamic_light, rl_lightmapped, false);\n"
 "#else\n"
-"	if (RetroLight[2].w > 0.)\n"
+"	if ((QVR_WF & 2) != 0 && RetroLight[2].w > 0.)\n"
 "		RetroLightWorld(total_light, dynamic_light, rl_lightmapped, true);\n"
 "#endif\n"
 "	if ((ShadowFlags & 20u) != 0u) // QVR: uncapped (DarkPlaces' never are)\n"
