@@ -442,7 +442,14 @@ static qmodel_t *Mod_LoadModel (qmodel_t *mod, qboolean crash)
 	VR_ModelMetadataChanged (mod); // QVR: alias-cache eviction and explicit reload invalidate copied metadata
 	VR_ModelSourcesForget (mod); // QVR: the files it was made from (a campaign switch's check: recorded below)
 	if (VR_SyntheticModel (mod)) // QVR: a model made in memory from another (a ragdoll's skinned body, vr/vr_ragdoll.cpp)
+	{
+		// QVR (Linux): its own sort key, as a loaded model's (Mod_LoadAliasModel): with none (0), every ragdoll sorted
+		// as one model, the kinds mixed, and the alias batches (R_Alias_CanAddToBatch) broke at nearly each body
+		mod->sortkey = ((CRC_Block (mod->name, strlen(mod->name)) >> 1) & MODSORT_FRAMEMASK) << MODSORT_FRAMEBITS;
+		if (mod->flags & MF_HOLEY)
+			mod->sortkey |= MODSORT_ALIAS_ALPHATEST;
 		return mod;
+	}
 	buf = VR_DerivedModelFile (mod->name, &mod->path_id); // QVR: a model made from another's file (a taken torch's flame)
 	derived = buf != NULL; // QVR
 	if (!buf)
