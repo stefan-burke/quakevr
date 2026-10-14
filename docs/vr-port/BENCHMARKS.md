@@ -50,6 +50,16 @@ bash kit/bench.sh list [<group>]
 - Time: a timing run is ~20-40 s (start-up, map load, set-up, 180 frames of warm-up, 900 measured at 90 Hz); `core` x 3
   is ~20 minutes, `all` x 3 about an hour and a half.
 
+Without the kit, two refs of a checkout compare in one go (`Misc/quakevr/bench/bench-refs.sh`): it checks each
+ref out into a worktree under the repository's scratch/ (gitignored), builds both, runs the scenarios on each in turn (the repeats
+alternating which build goes first, every run the mock headset), and prints the same compare over the two
+results, under `benchresults/` in the repository. `--baseline` and `--new` (defaults `master` and `HEAD`), the
+same `--scenarios`/`--reps`/`--frames`/`--hz`/`--eye`/`--settings` as above, `--basedir` your Quake folder (with
+id1), `--keep` the worktrees and run folders for inspection. Its first two lines fetch everything through Nix
+(nix-shell: the compilers, make, SDL2, the codecs, Python and fteqcc) -- run the script itself, for bash skips
+them; elsewhere the same tools must be in the environment (or a progs.dat at hand). The game folder is the
+worktree's own, so nothing of yours is written to.
+
 ## What a run records
 
 `vr_bench_begin <name> [frames | <seconds>s]` records every frame from the next one on, until `vr_bench_end`, the
