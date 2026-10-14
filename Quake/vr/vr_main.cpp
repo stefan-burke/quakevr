@@ -2049,6 +2049,11 @@ extern "C" void VR_Shutdown()
     jobs::shutdown(); // last: whatever the systems above left queued run, the workers joined
 }
 
+extern "C" int VR_UpdateBeforeWait()
+{
+    return state && state->backend && state->backend->endsFrameLate();
+}
+
 extern "C" void VR_BeginFrame()
 {
     if(!state || cls.state == ca_dedicated)

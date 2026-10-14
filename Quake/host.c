@@ -1439,6 +1439,7 @@ void _Host_Frame (double time)
 	static double	accumtime = 0;
 	double time1, time2, time3;
 	qboolean ranserver = false;
+	int vrlate; // QVR
 
 	time1 = Sys_DoubleTime ();
 	VR_ProfileFrame (); // QVR: ends the last frame's profile, begins this one's
@@ -1467,7 +1468,9 @@ void _Host_Frame (double time)
 // allow mice or other external controllers to add commands
 	IN_Commands ();
 	VR_ProfileEnd (); // QVR
-	VR_BeginFrame (); // QVR
+	vrlate = VR_UpdateBeforeWait (); // QVR: asked once, so VR_BeginFrame runs once whatever this frame starts or stops
+	if (!vrlate)
+		VR_BeginFrame (); // QVR
 	if (host_framecount == 0) VR_TimeMark ("first frame: input, VR backend start"); // QVR
 
 //check the stdin for commands (dedicated servers)
@@ -1558,6 +1561,11 @@ void _Host_Frame (double time)
 	if (cls.state == ca_connected)
 		CL_ReadFromServer ();
 	VR_ProfileEnd (); // QVR
+
+	// QVR: the runtime's frame waited for and begun only now (VR_UpdateBeforeWait): the update above ran while the
+	// GPU finished the last frame, which the backend ends only now. The update used the last frame's poses.
+	if (vrlate)
+		VR_BeginFrame ();
 
 // update video
 	if (host_speeds.value)

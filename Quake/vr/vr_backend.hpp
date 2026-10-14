@@ -242,6 +242,14 @@ public:
     // rendered ones are to be shown again).
     virtual void endFrame(bool rendered) = 0;
 
+    // endFrame only keeps the frame, which is ended when the next frame begins (or at stop): the runtime's frame end
+    // waits for the GPU (SteamVR's xrEndFrame), so the game updates the next frame meanwhile instead (host.c,
+    // VR_UpdateBeforeWait).
+    [[nodiscard]] virtual bool endsFrameLate() const
+    {
+        return false;
+    }
+
     // A flat panel the runtime shows in front of the player while the world is not rendered
     // (menus before a map, the console, loading): the GL texture to copy the 2D layer into, or
     // 0 without one. At most once per frame; shown with the frame endFrame finishes.

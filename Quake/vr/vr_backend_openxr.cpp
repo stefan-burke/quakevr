@@ -258,6 +258,7 @@ public:
         {
             endFrame(false);
         }
+        submitEnd();
 
         for(Swapchain* sc : {&swapchains[0], &swapchains[1], &panel})
         {
@@ -334,6 +335,7 @@ public:
         {
             endFrame(false); // the previous frame was not rendered (e.g. while loading)
         }
+        submitEnd(); // the last frame's, if endsFrameLate kept it
 
         double t0 = Sys_DoubleTime();
         const bool polled = pollEvents();
@@ -513,14 +515,16 @@ public:
         }
         frameBegun = false;
 
-        XrCompositionLayerProjectionView projViews[2]{};
-        XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
-
-        XrFrameEndInfo endInfo{XR_TYPE_FRAME_END_INFO};
+        // Kept in `ending` until submitEnd: the frame may be ended only when the next begins (endsFrameLate).
+        ending = FrameEnd{};
+        XrCompositionLayerProjectionView* projViews = ending.views;
+        XrCompositionLayerProjection& layer = ending.layer;
+        XrCompositionLayerQuad& quad = ending.quad;
+        XrFrameEndInfo& endInfo = ending.info;
         endInfo.displayTime = frameState.predictedDisplayTime;
         endInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
 
-        const XrCompositionLayerBaseHeader* submitted[2];
+        const XrCompositionLayerBaseHeader** submitted = ending.layers;
         uint32_t count = 0;
 
         const bool held = rendered && holding && haveLastViews;
@@ -556,7 +560,6 @@ public:
             timing.empty += panelPending ? 0 : 1;
         }
 
-        XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
         if(panelPending && frameState.shouldRender)
         {
             // Placed anew only after it was away for a while, not across a frame or two without
@@ -582,10 +585,32 @@ public:
 
         endInfo.layerCount = count;
         endInfo.layers = count ? submitted : nullptr;
-        const double t0 = Sys_DoubleTime();
-        check(xrEndFrame(session, &endInfo), "xrEndFrame");
-        timeCall(CallEnd, t0);
+        ending.pending = true;
         timing.frames++;
+        if(!endsFrameLate())
+        {
+            submitEnd();
+        }
+    }
+
+    // SteamVR's xrEndFrame waits for the GPU to finish the frame: ended late, when the next begins, the game's update
+    // runs meanwhile (as OpenCE's Halo does).
+    [[nodiscard]] bool endsFrameLate() const override
+    {
+        return steamvr;
+    }
+
+    // xrEndFrame for the frame endFrame kept, if any.
+    void submitEnd()
+    {
+        if(!ending.pending)
+        {
+            return;
+        }
+        ending.pending = false;
+        const double t0 = Sys_DoubleTime();
+        check(xrEndFrame(session, &ending.info), "xrEndFrame");
+        timeCall(CallEnd, t0);
     }
 
     [[nodiscard]] unsigned acquirePanelImage(int width, int height) override
@@ -693,6 +718,15 @@ private:
     bool sessionRunning{false};
     bool swapIntervalChanged{false};
     bool frameBegun{false};
+    struct FrameEnd
+    {
+        XrCompositionLayerProjectionView views[2]{};
+        XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+        XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+        const XrCompositionLayerBaseHeader* layers[2]{};
+        XrFrameEndInfo info{XR_TYPE_FRAME_END_INFO};
+        bool pending{false};
+    } ending; // endFrame's layers, until submitEnd
     XrFrameState frameState{XR_TYPE_FRAME_STATE};
     XrView views[2]{{XR_TYPE_VIEW}, {XR_TYPE_VIEW}};
     XrViewConfigurationView configViews[2]{{XR_TYPE_VIEW_CONFIGURATION_VIEW}, {XR_TYPE_VIEW_CONFIGURATION_VIEW}};
@@ -716,6 +750,7 @@ private:
     char runtime[XR_MAX_RUNTIME_NAME_SIZE + 32]{}; // its name and version
     char system[XR_MAX_SYSTEM_NAME_SIZE]{};        // the headset's name (systemName)
     bool vdxr{false};                             // Virtual Desktop's own runtime (VDXR)
+    bool steamvr{false};                          // SteamVR's runtime (endsFrameLate)
     bool debugUtils{false};                       // diagnostics mode: XR_EXT_debug_utils enabled
     XrDebugUtilsMessengerEXT messenger{XR_NULL_HANDLE};
     bool runtimeFaulted{false};                   // it crashed inside a guarded call (guarded): this start fails
@@ -1589,6 +1624,7 @@ private:
             q_snprintf(runtime, sizeof(runtime), "%s %u.%u.%u", props.runtimeName, XR_VERSION_MAJOR(props.runtimeVersion),
                 XR_VERSION_MINOR(props.runtimeVersion), XR_VERSION_PATCH(props.runtimeVersion));
             vdxr = !strncmp(props.runtimeName, "VirtualDesktopXR", 16);
+            steamvr = strstr(props.runtimeName, "SteamVR") != nullptr;
             Con_Printf("OpenXR runtime: %s\n", runtime);
         }
         xrruntime::loaded(currentAttempt, runtime[0] ? runtime : "a runtime without a name");
