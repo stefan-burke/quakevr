@@ -659,6 +659,7 @@ GLuint GL_WorldProgram (int oit, int dither, int mode, int flags, unsigned featu
 	"#define QVR_AF_RIM "		QS_STRINGIFY (QVR_AF_RIM) "\n" \
 	"#define AF_ON(f) ((QVR_AF & (f)) != 0)\n"
 GLuint GL_AliasProgram (int oit, int mode, int alphatest, int poseverttype, unsigned features); // QVR
+#define ALIAS_NOFULLBRIGHT_LOCATION	87	// QVR: the model shader's uniform: 1 when the skin has no fullbrights
 void GL_ReloadShaders_f (void); // QVR: tests (vr_shader_reload)
 
 typedef struct glframebufs_s {

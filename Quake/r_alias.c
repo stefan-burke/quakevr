@@ -479,6 +479,7 @@ void R_FlushAliasInstances (qboolean showtris)
 	qboolean	alphatest, translucent, oit;
 	qboolean	a2c; // QVR
 	qboolean	layered; // QVR: into all their faces at once (aliasfaces)
+	qboolean	shaded; // QVR: the program has the models' fragment shader
 	int			drawcount; // QVR: instances drawn (layered: an instance once per face)
 	int			i, f; // QVR
 	int			totalverts;
@@ -539,8 +540,10 @@ void R_FlushAliasInstances (qboolean showtris)
 		mode = r_softemu_mdl_warp.value > 0.f ? ALIASSHADER_NOPERSP : ALIASSHADER_STANDARD;
 		break;
 	}
-	GL_UseProgram (GL_AliasProgram (oit, mode, alphatest, poseverttype, VR_AliasFeatures ())); // QVR: this frame's features
-	if (aliasdepth && !alphatest && !translucent) // QVR: a shadow map's opaque casters: no fragment shader (holey skins keep theirs)
+	shaded = !aliasdepth || alphatest || translucent; // QVR: a shadow map's opaque casters: no fragment shader (holey skins keep theirs)
+	if (shaded)
+		GL_UseProgram (GL_AliasProgram (oit, mode, alphatest, poseverttype, VR_AliasFeatures ())); // QVR: this frame's features
+	else
 		GL_UseProgram (layered ? glprogs.alias_depth_layered[poseverttype] : glprogs.alias_depth[poseverttype]);
 	if (layered) // QVR: the faces' view-projections and the draws (holey skins are drawn a face at a time: vr_lighting.cpp)
 	{
@@ -696,6 +699,8 @@ void R_FlushAliasInstances (qboolean showtris)
 		textures[2] = TexMgr_NormalMap (showtris || r_lightmap_cheatsafe ? NULL : hdr->gltextures[skinnum][anim]); // QVR
 
 		GL_BindTextures (0, 3, textures); // QVR: and the normal map
+		if (shaded) // QVR: the skin's fullbrights read only if it has any
+			GL_Uniform1iFunc (ALIAS_NOFULLBRIGHT_LOCATION, textures[1] == blacktexture);
 		GL_DrawElementsInstancedFunc (GL_TRIANGLES, hdr->numindexes, GL_UNSIGNED_SHORT, (void*)hdr->eboofs, drawcount); // QVR: drawcount
 		rs_aliaspasses += hdr->numtris * drawcount;
 	}
@@ -732,6 +737,8 @@ void R_FlushAliasInstances (qboolean showtris)
 			textures[2] = TexMgr_NormalMap (showtris || r_lightmap_cheatsafe ? NULL : hdr->gltextures[skinnum][anim]); // QVR
 
 			GL_BindTextures (0, 3, textures); // QVR: and the normal map
+			if (shaded) // QVR
+				GL_Uniform1iFunc (ALIAS_NOFULLBRIGHT_LOCATION, textures[1] == blacktexture);
 			GL_DrawElementsInstancedFunc (GL_TRIANGLES, hdr->numindexes, GL_UNSIGNED_SHORT, (void*)hdr->eboofs, drawcount); // QVR: drawcount
 			rs_aliaspasses += hdr->numtris * drawcount;
 		}
