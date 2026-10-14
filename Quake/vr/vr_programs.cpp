@@ -16,21 +16,19 @@ struct LightShadows
     bool any{false};    // ... or any shadow, or lights through a teleporter (the world's shadow functions' work)
 };
 
-// This frame's lights' shadows: looked through once a frame.
+// The lights' shadows as the light buffer has them at this moment, read anew each call: the buffer is not once
+// a frame. Every view builds it again (R_PushDlights), and the shadow maps' pass reads the last view's before
+// this view's is built, so an answer kept for a frame would be the first reader's — the shadow pass's, of the
+// previous buffer — for the frame's draws. A walk of at most MAX_DLIGHTS lights, against the draw it chooses a
+// program for.
 [[nodiscard]] LightShadows lightShadows()
 {
-    static int frame = -1;
-    static LightShadows shadows;
-    if(frame != host_framecount)
+    LightShadows shadows;
+    for(int i = 0; i < r_framedata.numlights; i++)
     {
-        frame = host_framecount;
-        shadows = LightShadows{};
-        for(int i = 0; i < r_framedata.numlights; i++)
-        {
-            const gpulight_t& l = r_lightbuffer.lights[i];
-            shadows.mapped |= l.shadow[2] > 0.f;
-            shadows.any |= l.shadow[2] > 0.f || l.shadow[3] != 0.f || l.gatelo[3] > 0.f;
-        }
+        const gpulight_t& l = r_lightbuffer.lights[i];
+        shadows.mapped |= l.shadow[2] > 0.f;
+        shadows.any |= l.shadow[2] > 0.f || l.shadow[3] != 0.f || l.gatelo[3] > 0.f;
     }
     return shadows;
 }
