@@ -8163,7 +8163,8 @@ za::Vector<Item> pageMain()
             .help("How much the upscaler sharpens the image (FSR, NIS). Too much makes edges shimmer."),
         cycle("Foveated Rendering", vr_foveated, {{0.f, "Off"}, {1.f, "Conservative"}, {2.f, "Balanced"}, {3.f, "Aggressive"}})
             .help("Draws the edges of the view, which the lenses blur anyway, in less detail: faster. NVIDIA graphics "
-                  "cards only."),
+                  "cards shade them coarser; others (AMD, Intel, the Steam Frame) skip some of their pixels and fill "
+                  "them in from those around."),
 
         header("Graphics"),
         toggle("Retro Textures", vr_retro)
@@ -8279,7 +8280,7 @@ za::Vector<Item> pageMain()
         slider("Sharpness", vr_upscale_sharpness, 0.f, 1.f, 0.05f, "%.2f")
             .help("The upscaler's sharpening (FSR, NIS). Too much makes edges shimmer."),
         cycle("Foveated Rendering", vr_foveated, {{0.f, "Off"}, {1.f, "Conservative"}, {2.f, "Balanced"}, {3.f, "Aggressive"}})
-            .help("Shade the scene coarser towards the edges of the lenses, where they blur anyway: faster. NVIDIA GPUs only (variable-rate shading)."),
+            .help("Shade the scene coarser towards the edges of the lenses, where they blur anyway: faster. NVIDIA GPUs by variable-rate shading; others (AMD, Intel, the Steam Frame) skip every other 2x2 block there, three in four at the edge, filled in from those around (vr_foveated_mask). Little gain with Parallax Depth on (vr_parallax_depth_write): those pixels are shaded anyway."),
         toggle("Hide Lens Corners", vr_visibility_mask)
             .help("Skip the pixels the lenses never show (if the headset gives them): faster, looks the same. Black corners in the desktop mirror."),
         slider("Near Clip", vr_nearclip, 0.02f, 1.f, 0.02f, "%.2f units").extend(0.02f, 4.f).advanced()

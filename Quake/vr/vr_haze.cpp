@@ -2,6 +2,7 @@
 
 #include "vr_modelmetadata.hpp"
 #include "vr_haze.hpp"
+#include "vr_foveated.hpp"
 #include "vr_bttrails.hpp"
 #include "vr_cvars.hpp"
 #include "vr_engine.hpp"
@@ -672,6 +673,8 @@ unsigned copyScene(unsigned sceneFbo, unsigned color, int samples, const int vie
     GL_BindFramebufferFunc(GL_DRAW_FRAMEBUFFER, copy.fbo);
     GL_BlitFramebufferFunc(viewport[0] + x0, viewport[1] + y0, viewport[0] + x1, viewport[1] + y1, x0, y0, x1, y1,
         GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    const int filled[4] = {x0, y0, x1 - x0, y1 - y0};
+    foveated::fillResolved(copy.fbo, copy.texture, filled); // the density mask's pixels left out (vr_foveated_mask)
     R_SetupGL();
     return copy.texture;
 }

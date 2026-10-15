@@ -618,6 +618,7 @@ bool halfDepthCompositeFailed = false;
 // name: the scene's targets made again at another size can come back under the same one).
 GLuint halfCompositeFbo = 0;
 GLuint halfCompositeColor = 0; // the colour texture last found complete with it (checked once a texture)
+int halfCompositeSamples = 0; // its samples (a multisampled scene's colour: vid_fsaa)
 constexpr float halfDepthTolerance = 0.1f; // a texel is at a pixel's distance within this much of it (and 8 units) of the nearest
 
 // drawReverseOrder's (vr_particle_saturate): the particles composited in reverse order ("under": the last drawn,
@@ -1256,17 +1257,71 @@ namespace
     return program;
 }
 
+// The scene's depth/stencil with one sample (`depth`, the scene's), for the particles' passes that attach or read it
+// (drawReverseOrder, halfDepthComposite). Multisampled (vid_fsaa, as shipped): its first sample copied into the
+// composite target's depth/stencil, which nothing uses while the scene draws (the MSAA resolve writes its colour
+// alone), with `sceneFbo` bound again after: the particles there are tested per pixel against that sample instead of
+// per sample (they are soft; their edges are their alpha), and blended into the scene once a pixel, not once a sample
+// for each particle over it. 0 when it cannot be (vr_particle_msaa_depth 0: as before, the passes not used).
+GLuint depthCopyFbo = 0;
+GLuint depthCopyTexture = 0; // the texture last found complete with it (checked once a texture)
+
+[[nodiscard]] GLuint singleSampleSceneDepth(GLuint sceneFbo, GLuint depth, int samples, const int viewport[4])
+{
+    if(samples <= 1)
+    {
+        return depth;
+    }
+    const GLuint copy = framebufs.composite.depth_stencil_tex;
+    if(vr_particle_msaa_depth.value == 0.f || copy == 0 || copy == depth)
+    {
+        return 0;
+    }
+    if(!depthCopyFbo)
+    {
+        GL_GenFramebuffersFunc(1, &depthCopyFbo);
+    }
+    GL_BindFramebufferFunc(GL_FRAMEBUFFER, depthCopyFbo);
+    if(copy != depthCopyTexture)
+    {
+        GL_FramebufferTexture2DFunc(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, copy, 0);
+        glDrawBuffer(GL_NONE);
+        glReadBuffer(GL_NONE);
+        if(GL_CheckFramebufferStatusFunc(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        {
+            Con_DPrintf("VR: particles: the scene's depth copy is incomplete, drawn as before\n");
+            depthCopyTexture = 0;
+            GL_BindFramebufferFunc(GL_FRAMEBUFFER, sceneFbo);
+            return 0;
+        }
+        depthCopyTexture = copy;
+    }
+    // (A blit passes by the fragment operations but the scissor test, which the scene's passes leave off.)
+    GL_BindFramebufferFunc(GL_READ_FRAMEBUFFER, sceneFbo);
+    const int x1 = viewport[0] + viewport[2], y1 = viewport[1] + viewport[3];
+    GL_BlitFramebufferFunc(viewport[0], viewport[1], x1, y1, viewport[0], viewport[1], x1, y1,
+        GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT, GL_NEAREST);
+    GL_BindFramebufferFunc(GL_FRAMEBUFFER, sceneFbo);
+    return copy;
+}
+
 // vr_particle_saturate: the batch drawn with `program` (set up, its state `stateMask`) in reverse order into an
 // UnderTarget and blended over the scene's target, which is what is bound (R_SetupGL's: VR_DrawSceneTranslucent, after
 // the translucent pass; one sample). False, with nothing drawn or changed, when it cannot be. No glGet (each waits for the driver's
 // thread): the stencil is left as the others expect it (they set what they use; R_Clear its mask).
 [[nodiscard]] bool drawReverseOrder(const ParticleBatch& batch, GLuint program, unsigned stateMask)
 {
-    unsigned color = 0, depth = 0;
+    unsigned color = 0, sceneDepth = 0;
     int samples = 0, viewport[4];
-    const GLuint sceneFbo = VR_SceneTarget(&color, &depth, &samples, viewport);
+    const GLuint sceneFbo = VR_SceneTarget(&color, &sceneDepth, &samples, viewport);
     const int width = vid.width, height = vid.height; // the scene's targets' size (GL_CreateFBOAttachment)
-    if(sceneFbo == 0 || samples > 1 || depth == 0 || width <= 0 || height <= 0 || underFailed)
+    if(sceneFbo == 0 || sceneDepth == 0 || width <= 0 || height <= 0 || underFailed)
+    {
+        return false;
+    }
+    // (Multisampled: its first sample, copied now; the marks go into the copy, the scene's stencil untouched.)
+    const GLuint depth = singleSampleSceneDepth(sceneFbo, sceneDepth, samples, viewport);
+    if(depth == 0)
     {
         return false;
     }
@@ -1500,10 +1555,15 @@ void drawParticlesWith(GLuint program, const ParticleBatch& batch, bool pull, bo
 // changed, when the scene's depth cannot be read so (multisampled, or not a texture).
 [[nodiscard]] bool halfDepthComposite(GLuint& sceneFbo)
 {
-    unsigned color = 0, depth = 0;
+    unsigned color = 0, sceneDepth = 0;
     int samples = 0, viewport[4];
-    sceneFbo = VR_SceneTarget(&color, &depth, &samples, viewport);
-    if(sceneFbo == 0 || samples > 1 || color == 0 || depth == 0 || halfDepthCompositeFailed)
+    sceneFbo = VR_SceneTarget(&color, &sceneDepth, &samples, viewport);
+    if(sceneFbo == 0 || color == 0 || sceneDepth == 0 || halfDepthCompositeFailed)
+    {
+        return false;
+    }
+    const GLuint depth = singleSampleSceneDepth(sceneFbo, sceneDepth, samples, viewport); // (multisampled: its first sample)
+    if(depth == 0)
     {
         return false;
     }
@@ -1518,8 +1578,8 @@ void drawParticlesWith(GLuint program, const ParticleBatch& batch, bool pull, bo
         GL_GenFramebuffersFunc(1, &halfCompositeFbo);
     }
     GL_BindFramebufferFunc(GL_FRAMEBUFFER, halfCompositeFbo);
-    GL_FramebufferTexture2DFunc(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color, 0);
-    if(color != halfCompositeColor)
+    GL_FramebufferTexture2DFunc(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, samples > 1 ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, color, 0);
+    if(color != halfCompositeColor || samples != halfCompositeSamples)
     {
         // (A glCheckFramebufferStatus waits for the driver's thread: once a colour texture.)
         if(GL_CheckFramebufferStatusFunc(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
@@ -1529,6 +1589,7 @@ void drawParticlesWith(GLuint program, const ParticleBatch& batch, bool pull, bo
             return false;
         }
         halfCompositeColor = color;
+        halfCompositeSamples = samples;
     }
     foveated::shadeBoundAsScene(true); // its pixels are the scene's: shaded at its rates (vr_foveated), as before
     GL_UseProgram(halfDepthCompositeProgram);
@@ -2158,6 +2219,14 @@ extern "C" unsigned VR_OpaqueSceneTexture(void)
 extern "C" void VR_BindOpaqueScene(void)
 {
     const GLuint tex = VR_OpaqueSceneTexture();
+    if(tex && framebufs.scene.samples <= 1 && qvr::foveated::masking() && r_framedata.water[2] > 0.f &&
+        opaqueSceneResolve.frame != r_framecount)
+    {
+        // The density mask's pixels left out (vr_foveated_mask) filled in the scene first: the refraction reads round it.
+        qvr::foveated::fillMasked();
+        R_RestoreTranslucentTarget();
+        opaqueSceneResolve.frame = r_framecount;
+    }
     if(tex && framebufs.scene.samples > 1 && r_framedata.water[2] > 0.f && opaqueSceneResolve.frame != r_framecount)
     {
         GLuint color, depth;
@@ -2168,6 +2237,7 @@ extern "C" void VR_BindOpaqueScene(void)
         GL_BindFramebufferFunc(GL_DRAW_FRAMEBUFFER, framebufs.resolved_scene.fbo);
         GL_BlitFramebufferFunc(0, 0, viewport[2], viewport[3], 0, 0, viewport[2], viewport[3], GL_COLOR_BUFFER_BIT,
             GL_NEAREST);
+        qvr::foveated::fillResolved(framebufs.resolved_scene.fbo, framebufs.resolved_scene.color_tex, viewport); // the mask's pixels left out (vr_foveated_mask)
         R_RestoreTranslucentTarget();
         GL_EndGroup();
         VR_ProfileEnd();

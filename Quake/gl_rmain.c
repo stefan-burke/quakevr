@@ -2108,6 +2108,10 @@ void R_WarpScaleView (void)
 			GL_BindFramebufferFunc (GL_DRAW_FRAMEBUFFER, fbodest);
 			GL_BlitFramebufferFunc (0, 0, srcw, srch, srcx, srcy, srcx + srcw, srcy + srch, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 		}
+		if (needwarpscale) // QVR: the foveation mask's pixels left out, filled in the resolve (vr/vr_foveated.cpp)
+			VR_SceneResolved (framebufs.resolved_scene.fbo, framebufs.resolved_scene.color_tex, 0, 0, srcw, srch);
+		else if (fbodest)
+			VR_SceneResolved (fbodest, framebufs.composite.color_tex, srcx, srcy, srcw, srch);
 
 		GL_EndGroup ();
 	}
@@ -2179,6 +2183,7 @@ void R_RenderView (void)
 	VR_ProfileEnd (); // QVR
 	VR_ProfileBeginGPU ("scene"); // QVR: profile
 	R_RenderScene ();
+	VR_SceneEnd (); // QVR: the foveation mask's skipped pixels filled (vr/vr_foveated.cpp)
 	VR_ProfileEnd (); // QVR
 	VR_ProfileBeginGPU ("resolve/warp"); // QVR: profile
 	R_WarpScaleView ();

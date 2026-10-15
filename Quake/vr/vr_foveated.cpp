@@ -13,6 +13,7 @@
 #include "Zancle/Math/Clamp.hpp"
 #include "Zancle/Math/MinMax.hpp"
 #include "Zancle/Math/Tan.hpp"
+#include "Zancle/String/String.hpp"
 
 
 #ifndef GL_SHADING_RATE_IMAGE_NV
@@ -205,11 +206,20 @@ layout(location = 0) uniform vec4 Map;  // scene pixels per image pixel (xy), 1 
 layout(location = 1) uniform vec4 Lens; // the projection centre (image pixels), 1 / pixels per tangent
 layout(location = 2) uniform vec2 Ring; // vr_upscale's radius and the ring's half width, as tangents (x 0: none)
 layout(location = 3) uniform int HasRates;
+layout(location = 4) uniform vec2 MaskRings; // the density mask's: the tangents of its inner and outer angles (y 0: none)
 layout(location = 0) out vec4 Out;
 void main()
 {
     vec4 c = vec4(0.0);
-    if(HasRates != 0)
+    if(MaskRings.y > 0.0)
+    {
+        float t = length((gl_FragCoord.xy - Lens.xy) * Lens.zw);
+        if(t >= MaskRings.y)
+            c = vec4(1.0, 0.15, 0.0, 0.35);
+        else if(t >= MaskRings.x)
+            c = vec4(1.0, 0.9, 0.0, 0.22);
+    }
+    else if(HasRates != 0)
     {
         ivec2 t = clamp(ivec2(gl_FragCoord.xy * Map.xy * Map.zw), ivec2(0), textureSize(Rates, 0) - 1);
         uint r = texelFetch(Rates, t, 0).r;
@@ -226,7 +236,246 @@ void main()
 }
 )";
 
+// The density mask (vr_foveated_mask). Its vertex shader: a full-screen triangle at the depth Depth (the hidden area's:
+// the near plane).
+constexpr const char* maskVs = R"(#version 430
+layout(location = 3) uniform float Depth;
+void main()
+{
+    ivec2 v = ivec2(gl_VertexID & 1, gl_VertexID >> 1);
+    gl_Position = vec4(vec2(v) * 4.0 - 1.0, Depth, 1.0);
+}
+)";
+
+// Which pixels are shaded, in the mask and its fill alike: by 2x2 blocks, each block's ring from its middle's angle
+// off the view axis (the scene's pixels: gl_FragCoord), 0 all of them, 1 every other one (a checkerboard), 2 one in
+// four (even x and y).
+#define QVR_FOVEATED_KEPT \
+    "layout(location = 0) uniform vec4 Lens; // the projection centre (the scene's pixels), 1 / pixels per tangent\n" \
+    "layout(location = 1) uniform vec2 Rings; // the tangents of the inner and outer angles\n" \
+    "int Ring(ivec2 b)\n" \
+    "{\n" \
+    "    float t = length((vec2(b) * 2.0 + 1.0 - Lens.xy) * Lens.zw);\n" \
+    "    return t < Rings.x ? 0 : t < Rings.y ? 1 : 2;\n" \
+    "}\n" \
+    "bool Kept(ivec2 p)\n" \
+    "{\n" \
+    "    ivec2 b = p >> 1;\n" \
+    "    int r = Ring(b);\n" \
+    "    return r == 0 || (r == 1 ? ((b.x + b.y) & 1) == 0 : ((b.x | b.y) & 1) == 0);\n" \
+    "}\n"
+
+// The mask: the pixels left out, at the near plane (depth written; their colour black until filled).
+constexpr const char* maskFs = "#version 430\n" QVR_FOVEATED_KEPT R"(
+layout(location = 0) out vec4 Out;
+void main()
+{
+    if(Kept(ivec2(gl_FragCoord.xy)))
+        discard;
+    Out = vec4(0.0);
+}
+)";
+
+// The fill, into a single-sampled image of the scene (the scene itself without MSAA; with it, what it was resolved or
+// copied into: the samples averaged already, and no multisampled colour to decompress and read): each pixel left out
+// taking the nearest pixel of each of the 8 blocks round its own that are shaded (across them where half are, a
+// checkerboard; across or at the corners where a quarter are), weighted by 1 / their distance. Reads only shaded
+// pixels and writes only those left out: no feedback between them (after a glTextureBarrier for the draws before).
+// Drawn at the mask's depth, depth-tested for equal where the scene's depth is attached (FillDepth: the shaded pixels
+// not run at all), else over all of it.
+constexpr const char* fillFs = "#version 430\n" QVR_FOVEATED_KEPT R"(
+layout(binding = 0) uniform sampler2D Scene;
+layout(location = 0) out vec4 Out;
+const ivec2 directions[8] = ivec2[8](ivec2(1, 0), ivec2(-1, 0), ivec2(0, 1), ivec2(0, -1), ivec2(1, 1), ivec2(-1, 1),
+    ivec2(1, -1), ivec2(-1, -1));
+void main()
+{
+    ivec2 p = ivec2(gl_FragCoord.xy);
+    if(Kept(p))
+        discard; // (shaded; at the near plane, a held gun's part drawn there: vr_nearclip_held)
+    ivec2 last = textureSize(Scene, 0) - 1;
+    ivec2 o = p & ~1; // its block's first pixel
+    vec4 sum = vec4(0.0);
+    float weights = 0.0;
+    for(int i = 0; i < 8; i++)
+    {
+        // The block next to it this way: its pixel nearest to this one.
+        ivec2 d = directions[i];
+        ivec2 q = ivec2(d.x < 0 ? o.x - 1 : d.x > 0 ? o.x + 2 : p.x, d.y < 0 ? o.y - 1 : d.y > 0 ? o.y + 2 : p.y);
+        if(any(lessThan(q, ivec2(0))) || any(greaterThan(q, last)) || !Kept(q))
+            continue;
+        float w = inversesqrt(float(dot(q - p, q - p)));
+        sum += texelFetch(Scene, q, 0) * w;
+        weights += w;
+    }
+    if(weights <= 0.0)
+        discard;
+    Out = sum / weights;
+}
+)";
+
+using TextureBarrierFn = void(APIENTRY*)();
+TextureBarrierFn textureBarrier = nullptr;
+int maskSupport = -1; // unknown
+
+GLuint maskProgram = 0;
+bool maskFailed = false;
+GLuint fillProgram = 0;
+bool fillFailed = false;
+
+// This scene's mask (beginScene to endScene).
+struct Mask
+{
+    bool on{false};
+    upscale::Lens lens;
+    float tanInner{0.f}, tanOuter{0.f};
+};
+Mask mask;
+Mask lastMask[2]; // each eye's last one, for vr_foveated_debug
+
+// The hidden area's depth: the near plane (reversed Z with clip control, else -1 in clip space).
+[[nodiscard]] float maskDepth()
+{
+    return gl_clipcontrol_able ? 1.f : -1.f;
+}
+
+void maskUniforms()
+{
+    GL_Uniform4fFunc(0, mask.lens.centre.x, mask.lens.centre.y, 1.f / mask.lens.pixelsPerTangent.x,
+        1.f / mask.lens.pixelsPerTangent.y);
+    GL_Uniform2fFunc(1, mask.tanInner, mask.tanOuter);
+    GL_Uniform1fFunc(3, maskDepth());
+}
+
+[[nodiscard]] bool ensureFillProgram()
+{
+    if(!fillProgram && !fillFailed)
+    {
+        fillProgram = gfx::glProgram(maskVs, fillFs, "vr foveated fill");
+        fillFailed = !fillProgram;
+    }
+    return fillProgram != 0;
+}
+
+[[nodiscard]] bool ensureMaskProgram()
+{
+    if(!maskProgram && !maskFailed)
+    {
+        maskProgram = gfx::glProgram(maskVs, maskFs, "vr foveated mask");
+        maskFailed = !maskProgram;
+    }
+    return maskProgram != 0;
+}
+
+// Whether an eye's own scene of `width` x `height` gets the density mask (vr_foveated_mask: without variable-rate
+// shading, or 2; not in a view through a teleporter: its pixels are read through the gate's, and are not filled).
+[[nodiscard]] bool maskWanted(int width, int height)
+{
+    if(vr_foveated.value < 1.f || r_refdef.scale != 1 || width <= 0 || height <= 0 || VR_PortalDrawing())
+    {
+        return false;
+    }
+    const int mode = static_cast<int>(vr_foveated_mask.value);
+    return (mode >= 2 || (mode >= 1 && !supported())) && maskSupported() && ensureMaskProgram() && ensureFillProgram();
+}
+
+// The eye's mask: its lens and rings.
+[[nodiscard]] Mask maskFor(int eye, int width, int height)
+{
+    float inner = 0.f, outer = 0.f;
+    radii(inner, outer);
+    Mask m;
+    m.on = true;
+    m.lens = upscale::lens(eye, width, height);
+    m.tanInner = za::tan(glm::radians(inner));
+    m.tanOuter = za::tan(glm::radians(outer));
+    return m;
+}
+
+// The mask over what is bound (the eye's scene, just cleared, its hidden area drawn).
+void drawMask(int eye, int width, int height)
+{
+    mask = maskFor(eye, width, height);
+    lastMask[eye & 1] = mask;
+
+    QVR_GPU_PROFILE("foveation mask");
+    GL_UseProgram(maskProgram);
+    GL_DepthRange(ZRANGE_FULL);
+    GL_SetState(GLS_BLEND_OPAQUE | GLS_CULL_NONE | GLS_ATTRIBS(0)); // depth tested (passes against the clear) and written
+    maskUniforms();
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+}
+
 } // namespace
+
+bool maskSupported()
+{
+    if(maskSupport >= 0)
+    {
+        return maskSupport != 0;
+    }
+    textureBarrier = reinterpret_cast<TextureBarrierFn>(SDL_GL_GetProcAddress("glTextureBarrier"));
+    if(!textureBarrier)
+    {
+        textureBarrier = reinterpret_cast<TextureBarrierFn>(SDL_GL_GetProcAddress("glTextureBarrierNV"));
+    }
+    maskSupport = textureBarrier ? 1 : 0;
+    Con_Printf("VR: foveated rendering's density mask %s\n", maskSupport ? "available" : "not available (no glTextureBarrier)");
+    return maskSupport != 0;
+}
+
+bool masking()
+{
+    return mask.on;
+}
+
+namespace
+{
+
+// The fill into `fbo` (its colour `texture`, single-sampled, the scene's pixels at the same places) over `viewport`;
+// `depthTested`: the scene's depth attached, only the mask's depth shaded.
+void fillInto(GLuint fbo, GLuint texture, const int viewport[4], bool depthTested)
+{
+    QVR_GPU_PROFILE("foveation fill");
+    GL_BindFramebufferFunc(GL_FRAMEBUFFER, fbo);
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+    textureBarrier(); // the draws or the blit into it, read now
+    GL_UseProgram(fillProgram);
+    GL_DepthRange(ZRANGE_FULL);
+    GL_SetState(GLS_BLEND_OPAQUE | GLS_CULL_NONE | GLS_ATTRIBS(0) | GLS_NO_ZWRITE | (depthTested ? 0 : GLS_NO_ZTEST));
+    if(depthTested)
+    {
+        glDepthFunc(GL_EQUAL); // the mask's pixels only: the rest not shaded at all
+    }
+    GL_BindNative(GL_TEXTURE0, GL_TEXTURE_2D, texture);
+    maskUniforms();
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    if(depthTested)
+    {
+        glDepthFunc(gl_clipcontrol_able ? GL_GEQUAL : GL_LEQUAL); // GL_SetupState's
+    }
+}
+
+} // namespace
+
+void fillMasked()
+{
+    GLuint color = 0, depth = 0;
+    int samples = 1, viewport[4]{};
+    const GLuint fbo = mask.on ? VR_SceneTarget(&color, &depth, &samples, viewport) : 0;
+    if(fbo && color && samples <= 1)
+    {
+        fillInto(fbo, color, viewport, true);
+    }
+}
+
+void fillResolved(GLuint fbo, GLuint texture, const int viewport[4])
+{
+    if(mask.on && fbo && texture)
+    {
+        fillInto(fbo, texture, viewport, false);
+    }
+}
 
 bool supported()
 {
@@ -270,7 +519,22 @@ bool supported()
 void beginScene(int eye, int width, int height)
 {
     endScene(); // one left open (an error during the last eye's scene)
-    if(vr_foveated.value < 1.f || r_refdef.scale != 1 || width <= 0 || height <= 0 || !supported())
+    lastMask[eye & 1].on = false;
+    if(vr_foveated.value < 1.f || r_refdef.scale != 1 || width <= 0 || height <= 0)
+    {
+        return;
+    }
+    // Without variable-rate shading (or vr_foveated_mask 2): the density mask.
+    const int maskMode = static_cast<int>(vr_foveated_mask.value);
+    if(maskMode >= 2 || (maskMode >= 1 && !supported()))
+    {
+        if(maskWanted(width, height))
+        {
+            drawMask(eye, width, height);
+        }
+        return;
+    }
+    if(!supported())
     {
         return;
     }
@@ -311,6 +575,7 @@ void shadeBoundAsScene(bool on)
 
 void endScene()
 {
+    mask.on = false;
     if(!active)
     {
         return;
@@ -340,7 +605,9 @@ void drawDebug(int eye, GLuint fbo, int width, int height, int sceneWidth, int s
         return;
     }
     const RateImage& img = images[eye & 1];
-    const bool hasRates = vr_foveated.value >= 1.f && img.texture && img.width == sceneWidth && img.height == sceneHeight;
+    const Mask& eyeMask = lastMask[eye & 1];
+    const bool masked = vr_foveated.value >= 1.f && eyeMask.on;
+    const bool hasRates = !masked && vr_foveated.value >= 1.f && img.texture && img.width == sceneWidth && img.height == sceneHeight;
     const upscale::Lens lens = upscale::lens(eye, width, height);
     const bool ring = vr_upscale.value >= 1.f && upscale::radiusTangent() > 0.f;
 
@@ -354,6 +621,7 @@ void drawDebug(int eye, GLuint fbo, int width, int height, int sceneWidth, int s
     GL_Uniform4fFunc(1, lens.centre.x, lens.centre.y, 1.f / lens.pixelsPerTangent.x, 1.f / lens.pixelsPerTangent.y);
     GL_Uniform2fFunc(2, ring ? upscale::radiusTangent() : 0.f, 1.5f / lens.pixelsPerTangent.x);
     GL_Uniform1iFunc(3, hasRates ? 1 : 0);
+    GL_Uniform2fFunc(4, masked ? eyeMask.tanInner : 0.f, masked ? eyeMask.tanOuter : 0.f);
     glDrawArrays(GL_TRIANGLES, 0, 3);
 }
 

@@ -576,9 +576,10 @@ QVR_CVAR(vr_upscale, "1", CVAR_ARCHIVE)                // below vr_render_scale 
 QVR_CVAR(vr_upscale_sharpness, "0.5", CVAR_ARCHIVE)    // ... its sharpening, 0 none .. 1 most (FSR: RCAS 2 stops below its most at 0.1, its most at 1; NIS: its slider)
 QVR_CVAR(vr_upscale_radius, "40", CVAR_ARCHIVE)        // ... only within this many degrees of the lens centre, bilinear beyond (0: the whole image)
 QVR_CVAR(vr_upscale_sharpen_native, "0", CVAR_ARCHIVE) // at vr_render_scale 1: FSR's RCAS sharpening alone (with vr_upscale 1 or 2 and some sharpness)
-QVR_CVAR(vr_foveated, "0", CVAR_ARCHIVE)               // fixed foveated rendering (NVIDIA variable-rate shading): 0 off, 1 conservative, 2 balanced, 3 aggressive
+QVR_CVAR(vr_foveated, "0", CVAR_ARCHIVE)               // fixed foveated rendering (NVIDIA variable-rate shading; elsewhere the density mask, vr_foveated_mask): 0 off, 1 conservative, 2 balanced, 3 aggressive
 QVR_CVAR(vr_foveated_inner, "0", CVAR_ARCHIVE)         // ... full-rate shading within this many degrees of the lens centre (0: the preset's: 45, 35, 25)
 QVR_CVAR(vr_foveated_outer, "0", CVAR_ARCHIVE)         // ... 2x2 up to this many degrees, 4x4 beyond (0: the preset's: 60, 50, 40)
+QVR_CVAR(vr_foveated_mask, "1", CVAR_ARCHIVE)          // ... without variable-rate shading (GL_NV_shading_rate_image: AMD, Intel, Adreno): the density mask, every other 2x2 block skipped between inner and outer and three in four beyond, filled from the shaded ones round them; 0 none; 2 the mask even with variable-rate shading (tests)
 QVR_CVAR(vr_foveated_debug, "0", CVAR_NONE)            // show the shading rates (yellow 2x2, red 4x4) and vr_upscale_radius (cyan) in the eyes and the mirror
 
 QVR_CVAR(vr_enabled, "0", CVAR_NONE)
@@ -1576,6 +1577,7 @@ QVR_CVAR(vr_particle_saturate_batches, "8", CVAR_NONE) // tests: front-to-back b
 QVR_CVAR(vr_particle_saturate_cover, "10", CVAR_NONE) // tests: from how many views of particles (their squares clipped to the screen, not what the scene hides) they are composited in reverse order (0: always)
 QVR_CVAR(vr_particle_saturate_growth, "1", CVAR_NONE) // tests: each batch this many times the one before (1: all the same size)
 QVR_CVAR(vr_particle_saturate_opacity, "0.999", CVAR_NONE) // tests: a pixel this opaque skips the particles behind it (1: none skipped)
+QVR_CVAR(vr_particle_msaa_depth, "1", CVAR_NONE) // tests: with MSAA (vid_fsaa) the scene's depth copied to one sample for the particles' passes (vr_particle_saturate, vr_particle_halfres_upsample), blended in once a pixel; 0: those passes not used with MSAA, as before
 QVR_CVAR(vr_particle_retro_fast, "1", CVAR_ARCHIVE) // full resolution: derive the retro grid per vertex; 0: original fragment path for comparison (retro half always uses fast shaders)
 QVR_CVAR(vr_particle_retro_halfres, "0", CVAR_ARCHIVE) // opt-in half resolution for heavy retro particles; preserves palette/grid, softer edges
 QVR_CVAR(vr_particle_retro_halfres_pixels, "0", CVAR_ARCHIVE) // minimum projected half-size for the retro half-resolution pass; smaller particles stay crisp but draw over the larger ones (0: all, in their order)

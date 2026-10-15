@@ -45,6 +45,8 @@ int VR_DebugGLState (void);							// GL_BindNative, SCR_UpdateScreen: nonzero to
 unsigned VR_PostProcessTarget (void);					// GL_PostProcess output framebuffer (0 = window)
 void VR_OverrideProjection (float matrix[16]);			// R_SetFrustum: the eye's asymmetric projection
 void VR_DrawHiddenArea (void);							// R_RenderScene, after R_Clear: the lenses' hidden area at the near plane (vr_visibility_mask)
+void VR_SceneEnd (void);								// R_RenderView, after R_RenderScene (before the MSAA resolve): vr_foveated_mask's skipped pixels filled
+void VR_SceneResolved (unsigned fbo, unsigned texture, int x, int y, int width, int height); // R_WarpScaleView, after the MSAA resolve into texture (fbo): vr_foveated_mask's skipped pixels filled there
 void VR_DrawSceneOpaque (void);							// R_RenderScene, after the opaque entities
 void VR_WaterView (int contents, int *waterwarp);			// R_SetupView, after r_waterwarp: the liquids' look this view (the eye in `contents`); may turn the warp off
 void VR_DetailView (void);								// R_SetupView: the detail textures' settings this view (frame data), their array on unit 12 (vr_detail.cpp)

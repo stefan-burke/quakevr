@@ -1108,6 +1108,17 @@ extern "C" void VR_DrawHiddenArea()
     }
 }
 
+extern "C" void VR_SceneEnd()
+{
+    foveated::fillMasked(); // (vr_foveated_mask: nothing without it; with MSAA, VR_SceneResolved)
+}
+
+extern "C" void VR_SceneResolved(unsigned fbo, unsigned texture, int x, int y, int width, int height)
+{
+    const int viewport[4] = {x, y, width, height};
+    foveated::fillResolved(fbo, texture, viewport);
+}
+
 extern "C" unsigned VR_SceneColorFormat(unsigned format)
 {
     return stereo::creatingSceneTargets ? stereo::creatingFormat : format;
